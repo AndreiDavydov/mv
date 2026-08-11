@@ -16,6 +16,7 @@
     "test:all": "npm test && npm run test:e2e"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "fflate": "^0.8.2",
     "idb": "^8.0.3",
     "jsqr": "^1.4.0",

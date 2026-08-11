@@ -22,8 +22,8 @@ const SHELL = [
   './src/ui/views/browse.js',
   './src/ui/views/manifest.js',
   './src/ui/views/backup.js',
-  './src/core/db.js',
-  './src/core/repo.js',
+  './src/core/model.js',
+  './src/core/remote.js',
   './src/core/machine.js',
   './src/core/search.js',
   './src/core/backup.js',
@@ -39,6 +39,7 @@ const SHELL = [
   '../vendor/jsqr.js',
   '../vendor/qrcode.js',
   '../vendor/fflate.js',
+  '../vendor/supabase.js',
 ];
 
 self.addEventListener('install', (event) => {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BACKUP_FORMAT, backupStatus, fromJSON, toCSV, toJSON } from '../app/src/core/backup.js';
-import { normalize } from '../app/src/core/repo.js';
+import { normalize } from '../app/src/core/model.js';
 import { BACKUP_NAG_DAYS, BACKUP_NAG_EVENTS } from '../config.js';
 
 const DAY = 86_400_000;

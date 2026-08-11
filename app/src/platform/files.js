@@ -16,9 +16,17 @@ export async function buildBundle(catalog, { now = Date.now() } = {}) {
     'catalog.json': strToU8(JSON.stringify(json, null, 2)),
     'catalog.csv': strToU8(toCSV(things)),
   };
+
+  // Photos live in shared storage now, so they are fetched rather than read
+  // from the row. One that has gone missing must not take the export with it.
   for (const thing of things) {
-    if (thing.photo) {
-      files[`photos/${thing.id}.jpg`] = new Uint8Array(await thing.photo.arrayBuffer());
+    if (!thing.photo) continue;
+    try {
+      const response = await fetch(thing.photo);
+      if (!response.ok) continue;
+      files[`photos/${thing.id}.jpg`] = new Uint8Array(await response.arrayBuffer());
+    } catch {
+      /* skip this photo, keep the bundle */
     }
   }
 
@@ -82,25 +90,46 @@ export async function readBundle(file) {
 }
 
 /**
- * Replace the catalog with an imported bundle. Photos are re-attached by ID and
- * thumbnails regenerated, so a bundle whose thumbnails were stripped still
- * restores a usable grid view.
+ * Replace the shared catalog with an imported bundle.
+ *
+ * This affects everybody, not just this browser — the caller is responsible for
+ * making that clear before calling. Parents are cleared on the first pass and
+ * restored on the second, so the rows can go in without tripping the foreign
+ * key on a container that has not been inserted yet.
  */
-export async function restore(catalog, bundle, { derivePhotos }) {
+export async function restore(catalog, bundle) {
   const db = catalog.raw;
-  const tx = db.transaction(['things', 'events'], 'readwrite');
-  await Promise.all([tx.objectStore('things').clear(), tx.objectStore('events').clear()]);
-  await tx.done;
 
-  for (const thing of bundle.things) {
-    const photo = bundle.photos.get(thing.id) ?? null;
-    let thumb = null;
-    if (photo) ({ thumb } = await derivePhotos(photo));
-    await db.put('things', { ...thing, photo, thumb });
+  await db.from('events').delete().neq('id', -1);
+  await db.from('things').update({ parent_id: null }).neq('id', '');
+  await db.from('things').delete().neq('id', '');
+
+  const rows = bundle.things.map((thing) => ({
+    id: thing.id,
+    name: thing.name,
+    photo_url: thing.photo_file ? bundle.photoUrls?.get(thing.id) ?? null : null,
+    is_container: thing.is_container,
+    container_kind: thing.is_container ? (thing.container_kind ?? 'box') : null,
+    tags: thing.tags ?? [],
+    room: thing.room,
+    notes: thing.notes,
+    status: thing.status,
+  }));
+
+  const { error: insertError } = await db.from('things').insert(rows);
+  if (insertError) throw new Error(`could not restore the catalog: ${insertError.message}`);
+
+  // Second pass: now that every row exists, put the containment back.
+  for (const thing of bundle.things.filter((t) => t.parent_id)) {
+    await db.from('things').update({ parent_id: thing.parent_id }).eq('id', thing.id);
   }
-  for (const event of bundle.events) {
-    await db.put('events', event);
+
+  if (bundle.events.length) {
+    const events = bundle.events.map(({ id, ...rest }) => rest);
+    const { error } = await db.from('events').insert(events);
+    if (error) throw new Error(`catalog restored, but the history did not: ${error.message}`);
   }
+
   return { things: bundle.things.length, events: bundle.events.length, photos: bundle.photos.size };
 }
 

@@ -21,6 +21,7 @@ const targets = [
   { name: 'idb', entry: "export * from 'idb';" },
   { name: 'jsqr', entry: "export { default as jsQR } from 'jsqr';" },
   { name: 'fflate', entry: "export { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';" },
+  { name: 'supabase', entry: "export { createClient } from '@supabase/supabase-js';" },
 ];
 
 await mkdir(outdir, { recursive: true });

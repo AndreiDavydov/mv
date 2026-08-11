@@ -592,3 +592,11 @@ p { margin: 0 0 8px; }
   #view { overflow: visible; }
   .manifest__page { width: auto; padding: 0; margin: 0; }
 }
+
+/* ── shared-catalog states ──────────────────────────────────────────────── */
+
+.banner--offline { background: #4a1d1a; }
+
+.setup { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 14px; }
+.setup__step b { font-size: 15px; }
+.setup__step p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }

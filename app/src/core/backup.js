@@ -1,5 +1,5 @@
 import { BACKUP_NAG_DAYS, BACKUP_NAG_EVENTS } from '../../../config.js';
-import { normalize } from './repo.js';
+import { normalize } from './model.js';
 
 export const BACKUP_FORMAT = 'moving-catalog/1';
 

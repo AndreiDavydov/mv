@@ -1,9 +1,8 @@
-import { BACKUP_NAG_DAYS } from '../../../config.js';
+import { isConfigured } from '../../../config.js';
 import { isValidId, normalizeId } from '../../../shared/ids.js';
 import { parseScan } from '../../../shared/payload.js';
-import { Catalog } from '../core/repo.js';
+import { RemoteCatalog } from '../core/remote.js';
 import { cueFor, decideScan, finishEnroll, startPacking, stopPacking } from '../core/machine.js';
-import { backupStatus } from '../core/backup.js';
 import { CameraScanner, KeyboardScanner } from '../platform/scanner.js';
 import { play, setMuted, warmUp } from '../platform/feedback.js';
 import { h, plural } from './dom.js';
@@ -40,6 +39,8 @@ export class App {
   #current = null;
   #pendingEnroll = null;
   #navigating = false;
+  #liveTimer = null;
+  #online = true;
 
   constructor(root) {
     this.#root = root;
@@ -52,9 +53,19 @@ export class App {
   }
 
   async boot() {
-    this.catalog = await Catalog.open();
+    if (!isConfigured()) return this.#mount(setupView());
+
+    this.catalog = RemoteCatalog.open();
     this.session = await this.catalog.session();
     setMuted(localStorage.getItem('app.muted') === 'true');
+
+    // The whole point of the shared catalog: a scan on someone else's phone
+    // redraws this screen. Coalesced, because packing a box emits two writes
+    // in a row and redrawing twice makes the list flicker.
+    this.catalog.onChange(() => {
+      clearTimeout(this.#liveTimer);
+      this.#liveTimer = setTimeout(() => this.#refreshLive(), 120);
+    });
 
     this.scanner = new CameraScanner(this.video, (text) => this.scan(text, { source: 'camera' }));
     this.keyboard = new KeyboardScanner((text, meta) => this.scan(text, meta));
@@ -68,13 +79,14 @@ export class App {
       if (document.hidden) this.scanner.stop();
     });
 
+    // Losing the network now stops the work, so it is watched rather than
+    // discovered on the next failed write.
+    addEventListener('online', () => this.checkConnection());
+    addEventListener('offline', () => this.checkConnection());
+
     this.#renderTabbar();
     await this.#route();
-
-    // Deliberately not awaited: asking for persistent storage can put a prompt
-    // in front of the user, and nothing should stand between opening the app
-    // and the viewfinder being live.
-    this.#requestPersistence();
+    this.checkConnection();
   }
 
   // ── the scan pipeline ────────────────────────────────────────────────────
@@ -121,7 +133,9 @@ export class App {
         return this.#mount(enrollView(this, this.#pendingEnroll));
 
       case 'pack': {
-        await this.catalog.packInto(intent.id, intent.into);
+        await this.attempt(() => this.catalog.packInto(intent.id, intent.into), {
+          failure: `${displayName(thing)} was NOT packed`,
+        });
         this.toast(
           intent.from
             ? `${displayName(thing)} moved from ${intent.from}`
@@ -148,8 +162,14 @@ export class App {
   // ── enrolment ────────────────────────────────────────────────────────────
 
   async completeEnroll({ id, packInto, quick, fields }) {
-    await this.catalog.enroll({ id, ...fields });
-    if (packInto) await this.catalog.packInto(id, packInto);
+    // The photo goes to shared storage first: the row carries URLs, so every
+    // other screen can show the picture without asking the device that took it.
+    const { photo, thumb, ...rest } = fields;
+    await this.attempt(async () => {
+      const urls = photo || thumb ? await this.catalog.uploadPhoto(id, { photo, thumb }) : {};
+      await this.catalog.enroll({ id, ...rest, ...urls });
+      if (packInto) await this.catalog.packInto(id, packInto);
+    }, { failure: `${id} was NOT saved` });
 
     this.#pendingEnroll = null;
     await this.#setSession(finishEnroll(this.session, { packInto }));
@@ -186,25 +206,28 @@ export class App {
   }
 
   async unpack(id) {
-    await this.catalog.unpack(id);
+    await this.attempt(() => this.catalog.unpack(id), { failure: 'Not taken out' });
     this.toast('Taken out', 'good');
     return this.open(id, { replace: true });
   }
 
   async markGone(id) {
-    await this.catalog.markGone(id);
+    await this.attempt(() => this.catalog.markGone(id), { failure: 'Not marked as gone' });
     this.toast('Marked as gone', 'good');
     return this.open(id, { replace: true });
   }
 
   async saveEdit(id, patch) {
-    await this.catalog.update(id, patch, { type: patch.name !== undefined ? 'renamed' : 'moved' });
+    await this.attempt(
+      () => this.catalog.update(id, patch, { type: patch.name !== undefined ? 'renamed' : 'moved' }),
+      { failure: 'Changes were NOT saved' },
+    );
     this.toast('Saved', 'good');
     return this.open(id, { replace: true });
   }
 
   async undo() {
-    const undone = await this.catalog.undoLast();
+    const undone = await this.attempt(() => this.catalog.undoLast(), { failure: 'Undo failed' });
     if (!undone) {
       play('error');
       return this.toast('Nothing left to undo', 'muted');
@@ -214,10 +237,13 @@ export class App {
     await this.refresh();
   }
 
-  async markExported(eventCount) {
-    await this.catalog.setMeta('last_export_ts', Date.now());
-    await this.catalog.setMeta('last_export_event_count', eventCount);
-    await this.#refreshChrome();
+  /**
+   * Redraw after somebody else's write. ENROLL is exempt — half-typed text is
+   * unrecoverable, and the person typing it is the one who needs it most.
+   */
+  async #refreshLive() {
+    if (this.#current?.classList.contains('view--enroll')) return this.#refreshChrome();
+    return this.#route();
   }
 
   // ── navigation ───────────────────────────────────────────────────────────
@@ -298,7 +324,8 @@ export class App {
     // The camera is only ever open on the screens that show a viewfinder;
     // leaving it running behind a list view drains the battery for nothing.
     if (!view.classList.contains('view--scan') && !view.classList.contains('view--enroll')) {
-      this.scanner.stop();
+      // Optional chaining: the setup screen mounts before there is a scanner.
+      this.scanner?.stop();
     }
     this.#current = view;
     this.#viewHost.replaceChildren(view);
@@ -353,17 +380,17 @@ export class App {
       );
     }
 
-    const backup = backupStatus(await this.#backupContext());
-    if (backup.due) {
+    // The catalog now lives on a server, so losing the network stops the work
+    // rather than degrading it. That has to be impossible to miss.
+    if (!this.#online) {
       banners.push(
-        h('button.banner.banner--backup', { type: 'button', onClick: () => this.go('#/backup') },
-          h('span.banner__icon', null, '⬇'),
+        h('div.banner.banner--offline', null,
+          h('span.banner__icon', null, '⚠'),
           h('span.banner__text', null,
-            h('b', null, backup.reason === 'never' ? 'Never exported' : 'Export is due'),
-            h('small', null, backup.reason === 'events'
-              ? `${plural(backup.events, 'change')} since the last export`
-              : `more than ${BACKUP_NAG_DAYS} days old`),
+            h('b', null, 'No connection to the catalog'),
+            h('small', null, 'Scans will not save until this clears'),
           ),
+          h('button.btn.btn--ghost', { type: 'button', onClick: () => this.checkConnection() }, 'Retry'),
         ),
       );
     }
@@ -372,22 +399,27 @@ export class App {
     this.#renderTabbar();
   }
 
+  /** @returns {Promise<boolean>} */
+  async checkConnection() {
+    const { ok } = await this.catalog.ping();
+    const changed = ok !== this.#online;
+    this.#online = ok;
+    if (changed) {
+      await this.#refreshChrome();
+      if (ok) {
+        this.toast('Back online', 'good');
+        await this.#route();
+      }
+    }
+    return ok;
+  }
+
   async #backupContext() {
-    const [lastExportTs, lastExportEventCount, eventCount, thingCount] = await Promise.all([
-      this.catalog.meta('last_export_ts', 0),
-      this.catalog.meta('last_export_event_count', 0),
+    const [eventCount, thingCount] = await Promise.all([
       this.catalog.eventCount(),
       this.catalog.count(),
     ]);
-    return {
-      lastExportTs,
-      lastExportEventCount,
-      eventCount,
-      thingCount,
-      now: Date.now(),
-      persisted: (await navigator.storage?.persisted?.()) ?? false,
-      estimate: (await navigator.storage?.estimate?.()) ?? null,
-    };
+    return { eventCount, thingCount, online: this.#online };
   }
 
   #renderTabbar() {
@@ -410,15 +442,6 @@ export class App {
     );
   }
 
-  async #requestPersistence() {
-    if (!navigator.storage?.persist) return;
-    if (await navigator.storage.persisted()) return;
-    const granted = await navigator.storage.persist();
-    if (!granted) {
-      this.toast('Storage is not persistent — export often', 'warn', 6000);
-    }
-  }
-
   toast(message, kind = 'muted', ms = 2600) {
     const node = h('div.toast', { class: `toast--${kind}` }, message);
     this.#toasts.append(node);
@@ -427,4 +450,52 @@ export class App {
       setTimeout(() => node.remove(), 200);
     }, ms);
   }
+
+  /**
+   * Every write goes through here. A failed save on a shared catalog is not a
+   * cosmetic problem — somebody believes an item is in a box — so it is
+   * reported loudly and the connection is rechecked.
+   */
+  async attempt(work, { failure = 'That did not save' } = {}) {
+    try {
+      const result = await work();
+      if (!this.#online) await this.checkConnection();
+      return result;
+    } catch (error) {
+      play('error');
+      this.toast(`${failure}: ${error.message}`, 'bad', 5000);
+      this.checkConnection();
+      throw error;
+    }
+  }
+}
+
+/**
+ * Shown when config.js has no Supabase project yet. The app is useless without
+ * one, so this says exactly what to do rather than failing at the first write.
+ */
+function setupView() {
+  const step = (title, detail) =>
+    h('li.setup__step', null, h('b', null, title), h('p', null, detail));
+
+  return h('section.view.view--list', null,
+    h('div.section__head', null, h('h2', null, 'Connect the catalog')),
+    h('div.card-block.card-block--warn', null,
+      h('b', null, 'No database configured'),
+      h('p', null,
+        'This catalog is shared: one database, every phone and laptop. It needs a ' +
+        'Supabase project before anything can be scanned.'),
+    ),
+    h('ol.setup', null,
+      step('Create a free Supabase project',
+        'supabase.com/dashboard — any region near you.'),
+      step('Run the schema',
+        'Open the SQL editor, paste all of supabase/schema.sql, run it once.'),
+      step('Paste two values into config.js',
+        'Project Settings → API: the Project URL and the anon public key. ' +
+        'Not the service_role key — that one bypasses every access rule.'),
+      step('Redeploy',
+        'Commit and push; GitHub Pages rebuilds in about a minute.'),
+    ),
+  );
 }

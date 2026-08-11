@@ -8,7 +8,7 @@ import {
   startPacking,
   stopPacking,
 } from '../app/src/core/machine.js';
-import { DEFAULT_SESSION } from '../app/src/core/repo.js';
+import { DEFAULT_SESSION } from '../app/src/core/model.js';
 
 const item = (id, parent_id = null) => ({ id, name: id, is_container: false, parent_id });
 const box = (id, parent_id = null) => ({ id, name: id, is_container: true, parent_id });

@@ -31,6 +31,25 @@ export const BASE_URL = 'HTTPS://ANDREIDAVYDOV.GITHUB.IO/mv/app';
  */
 export const BASE_URL_CONFIRMED = true;
 
+/**
+ * ── Shared catalog ──────────────────────────────────────────────────────────
+ *
+ * One database, every device. A scan on a phone shows up on the laptop screen
+ * immediately; nothing is stored on the scanning device.
+ *
+ * Fill these in from Supabase → Project Settings → API, then run
+ * `supabase/schema.sql` once in the SQL editor.
+ *
+ * The anon key is meant to be public — it is the browser key, guarded by the
+ * row-level security policies in schema.sql. It is NOT the service_role key;
+ * never put that one here, it bypasses every policy.
+ */
+export const SUPABASE_URL = '';
+export const SUPABASE_ANON_KEY = '';
+
+/** Nothing works without a database, so the app says so rather than looking broken. */
+export const isConfigured = () => Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+
 /** Crockford-style: no 0/O and no 1/I/L to confuse when typed by hand. */
 export const ID_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 

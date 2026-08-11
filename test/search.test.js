@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { searchThings } from '../app/src/core/search.js';
-import { normalize } from '../app/src/core/repo.js';
+import { normalize } from '../app/src/core/model.js';
 
 const make = (id, extra = {}) => normalize({ id, updated_at: 1, ...extra });
 

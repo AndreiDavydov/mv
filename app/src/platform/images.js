@@ -81,9 +81,11 @@ function canvasToBlob(canvas, quality) {
 export function urlPool() {
   const urls = new Set();
   return {
-    for(blob) {
-      if (!blob) return null;
-      const url = URL.createObjectURL(blob);
+    /** Accepts a Blob or an already-hosted URL — shared photos arrive as URLs. */
+    for(source) {
+      if (!source) return null;
+      if (typeof source === 'string') return source;
+      const url = URL.createObjectURL(source);
       urls.add(url);
       return url;
     },
