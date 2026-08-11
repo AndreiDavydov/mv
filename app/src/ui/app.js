@@ -279,6 +279,14 @@ export class App {
    */
   async #refreshLive() {
     if (this.#current?.classList.contains('view--enroll')) return this.#refreshChrome();
+
+    // A view that can update itself does so. Re-routing rebuilds the whole
+    // screen, which during a packing run means the pick-list blanks and the
+    // viewfinder restarts on every single write — including other people's.
+    if (this.#current?.live) {
+      await this.#current.live();
+      return this.#refreshChrome();
+    }
     return this.#route();
   }
 

@@ -78,7 +78,7 @@ export function scanView(app) {
             },
               thumbnail(thing, pool, { size: 'sm' }),
               h('div.row__text', null,
-                h('div.row__title', null, `${icon(thing)} ${displayName(thing)}`),
+                h('div.row__title', null, displayName(thing)),
                 h('div.row__sub', null, thing.parent_id ? `in ${thing.parent_id}` : 'loose'),
               ),
               h('code.row__id', null, thing.id),
@@ -156,6 +156,8 @@ export function scanView(app) {
     await load();
   };
 
+  /** Somebody packed something — refresh the list in place, keep the camera. */
+  view.live = load;
   view.destroy = () => pool.release();
   return view;
 }
