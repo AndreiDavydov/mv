@@ -1,3 +1,16 @@
+> **Superseded in one respect — see [BUILD.md](BUILD.md).**
+>
+> This brief specifies a device-local catalog: "no accounts, no server, no
+> sync" (§1, §11). That was built and then replaced on request. The catalog is
+> now **shared**: one Postgres database, every phone and laptop, updating live.
+> A scan on a phone appears on a laptop screen immediately, and nothing is
+> stored on the scanning device.
+>
+> Everything else in this document still holds — the label format, the ID
+> scheme, the scan state machine, the event log, the acceptance tests. The
+> consequence of the change is that there is **no offline mode**: writes fail
+> loudly instead of queueing.
+
 # HANDOVER — QR Home Inventory & Packing Catalog
 
 ## 0. Context

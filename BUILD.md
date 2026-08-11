@@ -10,11 +10,15 @@ reason.
 
 ```bash
 npm install
-npm run vendor          # bundles the 4 npm deps into /vendor (output is committed)
-npm test                # 87 unit tests, no browser
-npm run test:e2e        # 20 browser tests: real IndexedDB, real camera, real service worker
+npm run vendor          # bundles the npm deps into /vendor (output is committed)
+npm test                # 82 unit tests, no browser, no network
+npm run test:live       # 21 tests against the real Supabase project, incl. two
+                        #   isolated browsers proving one sees the other's scan
+npm run test:e2e        # browser tests for the scan pipeline
 npm run serve           # http://localhost:8087/labels/  and  /app/
 ```
+
+Live: **https://andreidavydov.github.io/mv/app/**
 
 ### The mock scan test
 
@@ -38,42 +42,71 @@ npm run demo -- --auto  # same, headless, types a description and prints the DB 
   │ 'K7M3'   │ 'enrolled' │ 1  │
 ```
 
-### Scanning with your phone, before the site is deployed
+### Scanning with your phone
 
-The intended flow is a phone's stock camera reading the label and opening the
-catalog at that ID. That only works once `BASE_URL` resolves to something real —
-until GitHub Pages is up, the printed URL is a 404.
+Open **https://andreidavydov.github.io/mv/app/** on the laptop, point the phone's
+normal camera at `proofs/label-on-box.png`, and the catalog opens on the phone at
+that ID — asking what the thing is if it has never been seen, showing its details
+if it has. Whatever the phone saves appears on the laptop without a reload.
 
-To test the flow today, generate a label pointing at the dev server's LAN
-address instead:
+To point a test label at a dev server instead of the deployed site:
 
 ```bash
 npm run serve                                            # binds all interfaces
 npm run proofs -- --no-sheet --base=http://<LAN-IP>:8087/app
 ```
 
-That writes `proofs/label-on-box-lan.png`. Show it on the laptop, scan it with
-the phone camera, and the catalog opens on the phone at `#K7M3`. Over plain HTTP
-the phone gets no service worker and no in-app camera — the enrol screen falls
-back to the OS camera picker — but the enrol, pack and search loops all work.
-
-**Never print a sheet from an overridden base.** The override exists for this
-one screen test.
+**Never print a sheet from an overridden base.** The override exists for screen
+tests only.
 
 ### Scripts
 
 | script | what it does |
 |---|---|
-| `npm run vendor` | bundle `qrcode`, `idb`, `jsqr`, `fflate` into `/vendor` as plain ESM |
-| `npm test` | unit tests (node:test + fake-indexeddb) |
+| `npm run vendor` | bundle `qrcode`, `jsqr`, `fflate`, `supabase-js` into `/vendor` as plain ESM |
+| `npm test` | unit tests — pure rules, no browser, no network |
+| `npm run test:live` | integration tests against the real Supabase project |
 | `npm run test:e2e` | browser tests (puppeteer-core driving the installed Chrome) |
-| `npm run test:all` | both |
+| `npm run test:all` | unit + e2e |
 | `npm run serve [port]` | static dev server; `localhost` is a secure context, so `getUserMedia` and service workers behave as on Pages |
 | `npm run proofs` | full-scale A4 sheet PDF + a single label rendered on a box |
 | `npm run shots` | screenshot every screen at phone size into `proofs/screens/` |
 | `npm run demo` | the mock scan test, above |
 
 ---
+
+## Architecture
+
+One shared database. The site on GitHub Pages is static; all state lives in
+Postgres, and every open screen subscribes to it.
+
+```
+   phone                    laptop                 anyone's browser
+     │                        │                          │
+     └────────────┬───────────┴──────────────────────────┘
+                  │  supabase-js  (REST + realtime socket)
+                  ▼
+        ┌───────────────────────────────────┐
+        │  things   current state           │
+        │  events   append-only history     │
+        │  storage  photos/<ID>.jpg         │
+        └───────────────────────────────────┘
+```
+
+- A scan resolves the label URL, which opens the app at `#ID` on that device.
+- Unknown code → it asks what the thing is. Known code → it shows the details.
+- Whoever answers, the write goes to Postgres, and **every** open screen redraws.
+- The scanning device stores nothing but which box it is currently packing —
+  that is per-person, so two helpers can fill two boxes at once.
+
+**No offline mode.** A shared catalog needs the network. Writes fail loudly with
+a red banner rather than queueing: a pack that silently lands ten minutes later
+is worse than being told to move two metres.
+
+**Anyone with the link can read and write.** That is what lets a helper open a
+URL and start working. The anon key is a shared password inside a public site.
+For a house move that is the right trade; `supabase/schema.sql` documents the
+one-line change to require sign-in instead.
 
 ## Layout
 
@@ -85,19 +118,22 @@ shared/                used by both deliverables
   qr-svg.js            QR → SVG, and measure() for what a payload actually costs
 labels/                DELIVERABLE 1 — open index.html, print
   sheets.js            sheet geometry as data
-app/                   DELIVERABLE 2 — the PWA
-  src/core/            no DOM, no browser: db, repo, machine, search, backup
+supabase/schema.sql    the shared database: tables, triggers, access rules, bucket
+app/                   DELIVERABLE 2 — the app
+  src/core/            no DOM: model (pure rules), remote (Postgres), machine,
+                       search, backup
   src/platform/        camera, decode, tones, image downscaling, files
   src/ui/              a 100-line DOM helper, components, views, controller
-  sw.js                precaches the shell
+  sw.js                caches the shell, network-first
 vendor/                bundled dependencies (committed; regenerate with npm run vendor)
 proofs/                printable artefacts + screenshots
 backups/               where exported bundles get committed
 ```
 
-The split that matters is `core/` versus everything else. `core/` is pure data
-and rules — no DOM, no camera, no network — which is why the state machine, the
-event log and the undo semantics are all testable in Node in milliseconds.
+The split that matters is `core/model.js` versus `core/remote.js`. The rules that
+are easy to get wrong — what an event records, which action undo should reverse —
+are plain data transformations with no storage attached, so they stay testable in
+milliseconds. `remote.js` only executes them against Postgres.
 
 ---
 
@@ -108,13 +144,19 @@ Every box in README §13 except the one that needs a real printer:
 | acceptance test | where |
 |---|---|
 | Print an item sheet; 5 labels scan first-try | **not run** — needs paper. `proofs/sheet-2222.pdf` is ready; see *QR size* below |
+| A scan on one device appears on another, no reload | `test/live/shared.live.js` |
+| Nothing is stored on the scanning device | `test/live/shared.live.js` |
+| A pack on the phone updates the box open on the laptop | `test/live/shared.live.js` |
+| A described item shows details instead of asking again | `test/live/shared.live.js` |
 | Enrol 10 unknown items | `test/e2e/acceptance.e2e.js` |
 | PACKING: scan 5 items, scan the box, all 5 appear | `test/e2e/acceptance.e2e.js` |
-| Item in Box A while packing Box B moves silently, log shows `unpacked` + `packed` | `test/e2e/acceptance.e2e.js` |
-| Undo reverses the last pack | `test/e2e/acceptance.e2e.js` + `test/undo.test.js` |
-| Airplane mode, reload, full enrol + pack loop | `test/e2e/acceptance.e2e.js` (service worker + `setOfflineMode`) |
-| Export, wipe, import — catalog and photos intact | `test/e2e/acceptance.e2e.js` |
+| Item in Box A while packing Box B moves silently, log shows `unpacked` + `packed` | `test/live/remote.live.js` |
+| Undo reverses the last pack, and a move as one action | `test/live/remote.live.js` + `test/model.test.js` |
+| The history cannot be deleted, only appended to | `test/live/remote.live.js` |
+| A container cannot be put inside itself | `test/live/remote.live.js` (Postgres trigger) |
+| Photos upload and are readable with no key | `test/live/remote.live.js` |
 | Typing a code by hand resolves like scanning it | `test/e2e/smoke.e2e.js` |
+| Airplane mode | **no longer applicable** — a shared catalog needs the network |
 
 Two extra loops worth knowing about:
 
