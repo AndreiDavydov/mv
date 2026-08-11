@@ -1,0 +1,4 @@
+node_modules/
+test/e2e/.media/
+proofs/screens/
+.DS_Store

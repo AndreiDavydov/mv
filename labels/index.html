@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Label sheets — QR inventory</title>
+<link rel="stylesheet" href="labels.css">
+</head>
+<body>
+
+<header class="app-bar">
+  <h1>Label sheets</h1>
+  <div class="spacer"></div>
+  <div class="counter" title="Every ID up to and including this one has been printed. Never reprint an ID.">
+    <span>printed up to</span>
+    <b id="printed-up-to">—</b>
+    <span id="printed-count"></span>
+  </div>
+  <button type="button" id="edit-counter">Correct…</button>
+</header>
+
+<main>
+  <aside class="controls">
+    <div id="config-notice"></div>
+
+    <fieldset>
+      <legend>Sheet</legend>
+      <label>
+        <span>Format</span>
+        <select id="sheet"></select>
+      </label>
+      <label>
+        <span>QR payload</span>
+        <select id="payload-format">
+          <option value="url">Format A — URL (stock camera opens the catalog)</option>
+          <option value="bare">Format B — bare ID (smaller code, no deep link)</option>
+        </select>
+      </label>
+      <label>
+        <span>Error correction</span>
+        <select id="ecc">
+          <option value="L">L — 7% recovery, largest modules</option>
+          <option value="M" selected>M — 15% recovery (recommended)</option>
+          <option value="Q">Q — 25% recovery, smallest modules</option>
+        </select>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Range</legend>
+      <label>
+        <span>Start ID</span>
+        <input type="text" id="start" maxlength="4" spellcheck="false" autocomplete="off">
+      </label>
+      <div class="chips">
+        <button type="button" class="chip" id="use-next">Next unused</button>
+      </div>
+      <div class="row">
+        <label>
+          <span>Count</span>
+          <input type="number" id="count" min="1" max="2600" step="1" value="65">
+        </label>
+        <label>
+          <span>Skip first N</span>
+          <input type="number" id="offset" min="0" step="1" value="0">
+        </label>
+      </div>
+      <div class="chips" id="count-presets"></div>
+      <div id="offset-notice"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Proofing</legend>
+      <label class="check">
+        <input type="checkbox" id="calibrate">
+        <span>Calibration mode — outlines, crosshairs, 100 mm ruler</span>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="test-strip">
+        <span>Test strip — first row only</span>
+      </label>
+    </fieldset>
+
+    <dl class="readout" id="readout"></dl>
+    <div id="quality-notice"></div>
+
+    <div class="actions">
+      <button type="button" class="primary" id="print">Print…</button>
+      <button type="button" id="mark-printed">Mark this range as printed</button>
+    </div>
+  </aside>
+
+  <section class="preview">
+    <div class="preview-head">
+      <span id="preview-summary"></span>
+      <div class="spacer" style="flex:1"></div>
+      <label class="check" style="border:0;padding:0">
+        <input type="checkbox" id="fit" checked>
+        <span>Fit to width</span>
+      </label>
+    </div>
+    <div class="pages" id="pages"></div>
+  </section>
+</main>
+
+<script type="module" src="labels.js"></script>
+</body>
+</html>

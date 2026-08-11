@@ -1,0 +1,29 @@
+{
+  "name": "moving",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "QR home inventory & packing catalog — label generator + offline PWA",
+  "scripts": {
+    "vendor": "node tools/vendor.mjs",
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:watch": "node --test --watch \"test/**/*.test.js\"",
+    "serve": "node tools/serve.mjs",
+    "proofs": "node tools/proofs.mjs",
+    "test:e2e": "node --test \"test/e2e/*.e2e.js\"",
+    "shots": "node tools/shots.mjs",
+    "demo": "node tools/demo.mjs",
+    "test:all": "npm test && npm run test:e2e"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2",
+    "idb": "^8.0.3",
+    "jsqr": "^1.4.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "fake-indexeddb": "^6.2.2",
+    "puppeteer-core": "^25.5.0"
+  }
+}

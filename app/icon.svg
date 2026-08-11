@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Catalog">
+  <rect width="512" height="512" rx="112" fill="#0b0d12"/>
+  <g fill="#eef2f9">
+    <path d="M112 112h96v96h-96zM136 136v48h48v-48z"/>
+    <path d="M304 112h96v96h-96zM328 136v48h48v-48z"/>
+    <path d="M112 304h96v96h-96zM136 328v48h48v-48z"/>
+    <path d="M240 112h32v32h-32zM272 144h32v32h-32zM240 176h32v32h-32zM272 208h32v32h-32z"/>
+    <path d="M112 240h32v32h-32zM176 240h32v32h-32zM240 240h32v32h-32zM304 240h32v32h-32zM368 240h32v32h-32z"/>
+    <path d="M240 304h32v32h-32zM304 304h32v32h-32zM368 304h32v32h-32zM272 336h32v32h-32zM336 336h32v32h-32zM240 368h32v32h-32zM304 368h32v32h-32zM368 368h32v32h-32z"/>
+  </g>
+</svg>
