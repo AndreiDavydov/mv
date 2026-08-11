@@ -25,6 +25,7 @@ export class RemoteCatalog {
   #listeners = new Set();
   #now;
   #seq = 0;
+  #lastGroup = null;
 
   constructor(client, { now = () => Date.now() } = {}) {
     this.#db = client;
@@ -223,17 +224,37 @@ export class RemoteCatalog {
    * log rather than the whole thing — with several people scanning at once
    * this runs often, and the log only grows.
    */
+  /** Reverse the newest action anybody took. Used by tests and the history view. */
   async undoLast() {
+    const log = await this.#tail();
+    const chosen = pickUndoGroup(log);
+    return chosen ? this.#reverse(chosen.group, chosen.members) : null;
+  }
+
+  /**
+   * Reverse one specific action. This is what the UI offers, because the
+   * catalog is shared: undo must mean "the thing I just did", never "whatever
+   * happened most recently anywhere".
+   */
+  async undoGroup(group) {
+    if (!group) return null;
+    const log = await this.#tail();
+    if (log.some((e) => e.payload?.undo_of_group === group)) return null; // already reversed
+    const members = log.filter((e) => e.payload?.group === group).sort((a, b) => b.id - a.id);
+    return members.length ? this.#reverse(group, members) : null;
+  }
+
+  async #tail() {
     const { data, error } = await this.#db
       .from('events')
       .select('*')
       .order('id', { ascending: false })
       .limit(200);
     if (error) throw wrap(error, 'could not read the history');
+    return data.map(fromEventRow);
+  }
 
-    const chosen = pickUndoGroup(data.map(fromEventRow));
-    if (!chosen) return null;
-    const { group, members } = chosen;
+  async #reverse(group, members) {
     const newGroup = this.#group();
     const written = [];
 
@@ -273,8 +294,20 @@ export class RemoteCatalog {
 
   // ── internals ────────────────────────────────────────────────────────────
 
+  /**
+   * The id of the last action *this client* wrote.
+   *
+   * On a shared catalog "undo the last thing" is the wrong offer — the last
+   * thing may be someone else's scan from two seconds ago. Undo is offered
+   * against a specific group instead, and this is how the UI knows which.
+   */
+  get lastGroup() {
+    return this.#lastGroup;
+  }
+
   #group() {
-    return `g${this.#now()}-${this.#seq++}`;
+    this.#lastGroup = `g${this.#now()}-${this.#seq++}`;
+    return this.#lastGroup;
   }
 
   async #applyGroup(steps) {

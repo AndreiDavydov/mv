@@ -241,3 +241,37 @@ test('a photo uploads to shared storage and is readable without a key', async ()
   await catalog.update('ZZ26', { photo: urls.photo_url, thumb: urls.thumb_url });
   assert.equal((await catalog.get('ZZ26')).photo, urls.photo_url);
 });
+
+test('undo targets the action you took, not whatever happened last', async () => {
+  // Two helpers. One packs, the other packs something else a moment later.
+  // Offering "undo the last action" would hand the first person the second
+  // person's work to reverse.
+  const other = RemoteCatalog.open();
+  try {
+    await catalog.enroll({ id: 'ZZ2A', name: 'Box A', is_container: true });
+    await catalog.enroll({ id: 'ZZ27', name: 'Mine' });
+    await other.enroll({ id: 'ZZ28', name: 'Theirs' });
+
+    await catalog.packInto('ZZ27', 'ZZ2A');
+    const mine = catalog.lastGroup;
+    await other.packInto('ZZ28', 'ZZ2A');
+
+    await catalog.undoGroup(mine);
+
+    assert.equal((await catalog.get('ZZ27')).parent_id, null, 'my pack was reversed');
+    assert.equal((await catalog.get('ZZ28')).parent_id, 'ZZ2A', 'theirs was left alone');
+  } finally {
+    other.close();
+  }
+});
+
+test('undoing the same action twice is refused rather than doubled', async () => {
+  await catalog.enroll({ id: 'ZZ2A', is_container: true });
+  await catalog.enroll({ id: 'ZZ27' });
+  await catalog.packInto('ZZ27', 'ZZ2A');
+  const group = catalog.lastGroup;
+
+  assert.ok(await catalog.undoGroup(group));
+  assert.equal(await catalog.undoGroup(group), null, 'already reversed');
+  assert.equal((await catalog.get('ZZ27')).parent_id, null);
+});

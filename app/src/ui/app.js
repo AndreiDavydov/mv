@@ -141,6 +141,8 @@ export class App {
             ? `${displayName(thing)} moved from ${intent.from}`
             : `${displayName(thing)} packed`,
           'good',
+          5000,
+          this.#undoAction(),
         );
         return this.#refreshChrome();
       }
@@ -236,14 +238,22 @@ export class App {
     return this.open(id, { replace: true });
   }
 
-  async undo() {
-    const undone = await this.attempt(() => this.catalog.undoLast(), { failure: 'Undo failed' });
+  /**
+   * Reverse one specific action — the one whose toast is on screen.
+   *
+   * Not "the last action", which on a shared catalog may be a helper's scan
+   * from two seconds ago. Undo is offered for a few seconds next to the thing
+   * it would reverse, and nowhere else; a permanent button invites exactly the
+   * accident it is supposed to fix.
+   */
+  async undoGroup(group) {
+    const undone = await this.attempt(() => this.catalog.undoGroup(group), { failure: 'Undo failed' });
     if (!undone) {
       play('error');
-      return this.toast('Nothing left to undo', 'muted');
+      return this.toast('That has already been undone', 'muted');
     }
     play('neutral');
-    this.toast(`Undid ${undone.events.map((e) => e.type).join(' + ')}`, 'good');
+    this.toast('Undone', 'good');
     await this.refresh();
   }
 
@@ -446,14 +456,28 @@ export class App {
       tab('#/search', '⌕', 'Search'),
       tab('#/tree', '⊞', 'Tree'),
       tab('#/unnamed', '✎', 'Unnamed'),
-      h('button.tab.tab--undo', { type: 'button', onClick: () => this.undo() },
-        h('span.tab__glyph', null, '↺'), h('span.tab__label', null, 'Undo')),
       tab('#/backup', '⬇', 'Backup'),
     );
   }
 
-  toast(message, kind = 'muted', ms = 2600) {
-    const node = h('div.toast', { class: `toast--${kind}` }, message);
+  #undoAction() {
+    const group = this.catalog.lastGroup;
+    return group ? { label: 'Undo', onClick: () => this.undoGroup(group) } : null;
+  }
+
+  toast(message, kind = 'muted', ms = 2600, action = null) {
+    const node = h('div.toast', { class: `toast--${kind}` },
+      h('span', null, message),
+      action
+        ? h('button.toast__action', {
+            type: 'button',
+            onClick: () => {
+              node.remove();
+              action.onClick();
+            },
+          }, action.label)
+        : null,
+    );
     this.#toasts.append(node);
     setTimeout(() => {
       node.classList.add('toast--out');

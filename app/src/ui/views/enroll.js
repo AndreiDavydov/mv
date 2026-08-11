@@ -28,7 +28,11 @@ export function enrollView(app, { id, packInto }) {
   });
 
   const preview = h('div.enroll__preview');
-  const stage = h('div.enroll__stage', null, app.video, shutter);
+
+  // An unlabelled circle over a video is not a photo button to anyone who has
+  // not been told. Say what it does.
+  const stageHint = h('p.enroll__stage-hint', null, 'Tap the circle to photograph it');
+  const stage = h('div.enroll__stage', null, app.video, shutter, stageHint);
 
   /**
    * The OS camera as a fallback: no in-app viewfinder, one round trip, but it
@@ -48,6 +52,13 @@ export function enrollView(app, { id, packInto }) {
   });
   const pickButton = h('button.btn.enroll__pick.is-hidden',
     { type: 'button', onClick: () => filePicker.click() }, '📷 Take a photo');
+
+  /**
+   * Shown while getUserMedia is still deciding — on a phone that is a permission
+   * prompt, and a blank gap where the photo option should be reads as "there is
+   * no photo option".
+   */
+  const stageWaiting = h('p.enroll__waiting', null, 'Starting the camera…');
 
   const name = h('input.field__input', {
     type: 'text',
@@ -153,6 +164,7 @@ export function enrollView(app, { id, packInto }) {
       h('button.btn.btn--ghost', { type: 'button', onClick: () => app.cancelEnroll() }, 'Cancel'),
     ),
     stage,
+    stageWaiting,
     pickButton,
     filePicker,
     preview,
@@ -171,10 +183,16 @@ export function enrollView(app, { id, packInto }) {
   );
 
   view.mounted = async () => {
+    // Hide both photo affordances until we know which one applies, and say so —
+    // an empty gap where the camera should be reads as "there is no photo here".
+    stage.classList.add('is-hidden');
+    pickButton.classList.add('is-hidden');
+    name.focus();
+
     const live = await app.startCamera();
+    stageWaiting.classList.add('is-hidden');
     stage.classList.toggle('is-hidden', !live);
     pickButton.classList.toggle('is-hidden', live);
-    name.focus();
   };
   view.destroy = () => pool.release();
   return view;
