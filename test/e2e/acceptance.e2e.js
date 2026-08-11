@@ -134,27 +134,13 @@ test('the session survives a reload — dropping the phone mid-pack costs nothin
   assert.equal((await state(page)).session.mode, 'PACKING');
 });
 
-test('the whole loop still works with the network cut', async () => {
-  await enrol('BXAA', 'Box A', { container: true });
-  await page.evaluate(() => globalThis.app.startPacking('BXAA'));
-
-  // Let the service worker precache, then pull the plug and reload from cache.
-  await page.evaluate(() => navigator.serviceWorker.ready);
+test('losing the network fails loudly instead of pretending to save', async () => {
+  // The catalog is shared, so there is no offline mode. The one thing that
+  // must never happen is a scan that looks saved and is not.
   await page.setOfflineMode(true);
   try {
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => globalThis.app?.catalog, { timeout: 15_000 });
-
-    await page.evaluate(() => globalThis.app.scan('K7M3'));
-    await page.waitForSelector('.view--enroll');
-    await page.type('.enroll__form .field__input', 'Offline pan');
-    await page.click('.enroll__actions .btn--primary');
-    await settle(page);
-
-    const { things } = await state(page);
-    const enrolled = things.find((t) => t.id === 'K7M3');
-    assert.equal(enrolled.name, 'Offline pan');
-    assert.equal(enrolled.parent_id, 'BXAA', 'enrol-then-pack chaining must work offline too');
+    await page.evaluate(() => globalThis.app.scan('K7M3', { source: 'manual' })).catch(() => {});
+    await page.waitForSelector('.toast--bad, .banner--offline', { timeout: 15_000 });
   } finally {
     await page.setOfflineMode(false);
   }

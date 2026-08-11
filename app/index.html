@@ -26,9 +26,16 @@
       `<pre style="color:#ff8080;padding:24px;white-space:pre-wrap">Could not start:\n${error.stack ?? error}</pre>`;
   });
 
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
-  }
+  /*
+   * No service worker. The catalog is shared, so the app needs the network
+   * anyway, and a cached shell means a device keeps running whatever build it
+   * first saw. Any worker still registered from an older visit is removed here
+   * as well as by sw.js itself — whichever gets there first.
+   */
+  navigator.serviceWorker?.getRegistrations?.().then((registrations) => {
+    for (const registration of registrations) registration.unregister();
+  }).catch(() => {});
+  globalThis.caches?.keys?.().then((keys) => keys.forEach((key) => caches.delete(key))).catch(() => {});
 </script>
 </body>
 </html>
