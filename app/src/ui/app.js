@@ -166,7 +166,17 @@ export class App {
     // other screen can show the picture without asking the device that took it.
     const { photo, thumb, ...rest } = fields;
     await this.attempt(async () => {
-      const urls = photo || thumb ? await this.catalog.uploadPhoto(id, { photo, thumb }) : {};
+      // A photo that will not upload must not cost the item. What somebody
+      // typed is the valuable part; the picture is a bonus, and losing the
+      // whole enrolment over storage being misconfigured is the worse failure.
+      let urls = {};
+      if (photo || thumb) {
+        try {
+          urls = await this.catalog.uploadPhoto(id, { photo, thumb });
+        } catch (error) {
+          this.toast(`Saved without the photo: ${error.message}`, 'warn', 5000);
+        }
+      }
       await this.catalog.enroll({ id, ...rest, ...urls });
       if (packInto) await this.catalog.packInto(id, packInto);
     }, { failure: `${id} was NOT saved` });

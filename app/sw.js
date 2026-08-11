@@ -1,11 +1,16 @@
 /**
- * Precaches the whole app shell so the enrol → pack loop works in a cellar with
- * no signal. Nothing in the core loop touches the network at runtime, so the
- * only network-dependent thing here is picking up a new version.
+ * Caches the app shell so a cold open is instant and a flaky connection still
+ * renders something.
  *
- * Bump CACHE whenever a shell file changes; the old cache is deleted on activate.
+ * NETWORK-FIRST, deliberately. The catalog is shared and lives on a server, so
+ * the app can no longer work offline anyway — and a cache-first shell means a
+ * phone that opened the site once keeps running that build forever, which is
+ * exactly how a fix reaches everyone except the person who needs it. The cache
+ * is the fallback, not the source of truth.
+ *
+ * Bump CACHE whenever a shell file changes; old caches are deleted on activate.
  */
-const CACHE = 'catalog-v1';
+const CACHE = 'catalog-v2';
 
 const SHELL = [
   './',
@@ -71,12 +76,8 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET' || new URL(request.url).origin !== location.origin) return;
 
-  // Cache-first: the shell is versioned by CACHE, and an offline-first app must
-  // never wait on a dead network before it can decode a label.
   event.respondWith(
     (async () => {
-      const hit = await caches.match(request, { ignoreSearch: true });
-      if (hit) return hit;
       try {
         const response = await fetch(request);
         if (response.ok && response.type === 'basic') {
@@ -84,7 +85,13 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       } catch {
-        return (await caches.match('./index.html')) ?? Response.error();
+        // Offline or the server is down: show the last good build rather than
+        // a browser error page, so the connection banner can explain itself.
+        return (
+          (await caches.match(request, { ignoreSearch: true })) ??
+          (await caches.match('./index.html')) ??
+          Response.error()
+        );
       }
     })(),
   );

@@ -13,7 +13,8 @@
     "test:e2e": "node --test \"test/e2e/*.e2e.js\"",
     "shots": "node tools/shots.mjs",
     "demo": "node tools/demo.mjs",
-    "test:all": "npm test && npm run test:e2e"
+    "test:all": "npm test && npm run test:e2e",
+    "test:live": "node --test --test-concurrency=1 \"test/live/*.live.js\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

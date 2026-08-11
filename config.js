@@ -44,8 +44,9 @@ export const BASE_URL_CONFIRMED = true;
  * row-level security policies in schema.sql. It is NOT the service_role key;
  * never put that one here, it bypasses every policy.
  */
-export const SUPABASE_URL = '';
-export const SUPABASE_ANON_KEY = '';
+export const SUPABASE_URL = 'https://sqwbpeltdjyjrclrgejp.supabase.co';
+export const SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxd2JwZWx0ZGp5anJjbHJnZWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0NTgyOTUsImV4cCI6MjEwMjAzNDI5NX0.5PJZdSoP71mHQLE0jNZxJF2aWgRT5CjvlJ-0iN2jJt4';
 
 /** Nothing works without a database, so the app says so rather than looking broken. */
 export const isConfigured = () => Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
