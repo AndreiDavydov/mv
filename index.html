@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catalog</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    display: grid;
+    place-items: center;
+    min-height: 100dvh;
+    background: #0b0d12;
+    color: #eef2f9;
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+    text-align: center;
+  }
+  a { color: #4d8bff; }
+  p { margin: 8px 0; }
+</style>
+</head>
+<body>
+<div>
+  <p>Opening the catalog…</p>
+  <p><a id="go" href="app/">app/</a> · <a href="labels/">labels/</a></p>
+</div>
+<script>
+  /*
+   * A safety net, not a route. Labels point straight at `app/`, but anything
+   * that lands on the repository root — a mistyped URL, an older label, a
+   * shared link — is forwarded with the #ID fragment intact, because losing
+   * the fragment would turn a working label into a dead one.
+   */
+  const target = 'app/' + location.search + location.hash;
+  document.getElementById('go').href = target;
+  location.replace(target);
+</script>
+</body>
+</html>

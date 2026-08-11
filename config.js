@@ -17,8 +17,12 @@
  * costs nothing: the payload is QR version 3 either way.
  */
 
-/** Your GitHub Pages URL. Host uppercase; path in its real case; no trailing slash. */
-export const BASE_URL = 'HTTPS://ANDREIDAVYDOV.GITHUB.IO/mv';
+/**
+ * Your GitHub Pages URL, pointing at the app itself — not the repository root,
+ * which serves the README. Host uppercase; path in its real case; no trailing
+ * slash. The extra `/app` costs nothing: still QR version 3.
+ */
+export const BASE_URL = 'HTTPS://ANDREIDAVYDOV.GITHUB.IO/mv/app';
 
 /**
  * True once BASE_URL has been reviewed by a human. The label generator
