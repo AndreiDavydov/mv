@@ -8,14 +8,17 @@
  * │ a box. Set it once, before printing, and never touch it again.          │
  * └─────────────────────────────────────────────────────────────────────────┘
  *
- * Uppercase on purpose: an all-uppercase payload is encoded in the QR
- * alphanumeric mode instead of byte mode (~40% denser). Domains are
- * case-insensitive so the link still resolves; the app uppercases the
- * fragment when parsing.
+ * The scheme and host are uppercase on purpose: an uppercase run is encoded in
+ * the QR alphanumeric mode instead of byte mode (~40% denser), and hostnames
+ * are case-insensitive so the link still resolves.
+ *
+ * The PATH IS NOT. GitHub Pages serves `/mv/` and 404s on `/MV/`. The path must
+ * match the repository name exactly, character for character — and here it
+ * costs nothing: the payload is QR version 3 either way.
  */
 
-/** Set to your GitHub Pages URL, uppercase, no trailing slash. */
-export const BASE_URL = 'HTTPS://ANDREIDAVYDOV.GITHUB.IO/MV';
+/** Your GitHub Pages URL. Host uppercase; path in its real case; no trailing slash. */
+export const BASE_URL = 'HTTPS://ANDREIDAVYDOV.GITHUB.IO/mv';
 
 /**
  * True once BASE_URL has been reviewed by a human. The label generator

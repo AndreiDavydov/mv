@@ -1,6 +1,6 @@
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { access, mkdir } from 'node:fs/promises';
+import { mkdir, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
@@ -19,11 +19,15 @@ export const BASE = `http://localhost:${PORT}`;
 export async function fakeCameraFile(png, name) {
   const out = join(root, 'test/e2e/.media', `${name}.y4m`);
   await mkdir(dirname(out), { recursive: true });
+
+  // Regenerating takes a second, so the file is cached — but only while it is
+  // newer than the label it was made from. A stale video silently tests the
+  // previous BASE_URL, which is exactly the bug this cache once hid.
   try {
-    await access(out);
-    return out;
+    const [video, source] = await Promise.all([stat(out), stat(png)]);
+    if (video.mtimeMs > source.mtimeMs) return out;
   } catch {
-    /* generate it */
+    /* missing or unreadable — regenerate */
   }
   await run('ffmpeg', [
     '-y', '-loglevel', 'error',

@@ -103,8 +103,34 @@ function renderReadout(state, layout, sample) {
     .join('');
 }
 
+/**
+ * A hostname is case-insensitive; a path is not. `github.io/MV/` 404s when the
+ * repository is `mv`. Uppercasing the whole URL for QR density silently breaks
+ * every label, so the path is checked before anything can be printed.
+ */
+function pathCaseProblem(baseUrl) {
+  try {
+    const path = new URL(baseUrl).pathname;
+    if (!/[A-Z]/.test(path)) return null;
+    return path;
+  } catch {
+    return null;
+  }
+}
+
 function renderNotices(state, layout) {
-  el.configNotice.innerHTML = BASE_URL_CONFIRMED
+  const badPath = pathCaseProblem(BASE_URL);
+
+  el.configNotice.innerHTML = badPath
+    ? notice(
+        'bad',
+        'The path in BASE_URL is uppercase',
+        `Hostnames are case-insensitive but paths are not — GitHub Pages will 404 on ` +
+          `<code>${escapeHtml(badPath)}</code> unless the repository is named with exactly ` +
+          'that casing. Fix the path in <code>/config.js</code> to match the repository name. ' +
+          'It costs nothing: the QR version is the same either way.',
+      )
+    : BASE_URL_CONFIRMED
     ? ''
     : notice(
         'bad',
@@ -259,6 +285,15 @@ function applyFit() {
 
 function print() {
   const state = readState();
+  const badPath = pathCaseProblem(BASE_URL);
+  if (badPath && state.payloadFormat === 'url' && !state.calibrate && !state.testStrip) {
+    alert(
+      `BASE_URL has an uppercase path: ${badPath}\n\n` +
+        'Paths are case-sensitive — every one of these labels would 404.\n' +
+        'Fix the path in /config.js to match the repository name exactly.',
+    );
+    return;
+  }
   if (!BASE_URL_CONFIRMED && state.payloadFormat === 'url' && !state.calibrate && !state.testStrip) {
     alert(
       'BASE_URL has not been confirmed.\n\n' +

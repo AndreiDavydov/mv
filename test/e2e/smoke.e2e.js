@@ -1,6 +1,7 @@
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { BASE, launch, openApp, resetDatabase, startServer, state } from './harness.mjs';
+import { buildPayload } from '../../shared/payload.js';
 
 let server;
 let browser;
@@ -58,8 +59,12 @@ test('a scanned URL payload resolves to the same thing as the bare code', async 
   await resetDatabase(page);
   await page.evaluate(() => globalThis.app.catalog.enroll({ id: 'K7M3', name: 'Pan' }));
 
-  await page.evaluate(() =>
-    globalThis.app.scan('HTTPS://ANDREYDAVYDOV.GITHUB.IO/MOVING/#K7M3'));
+  // Built from the live config, so changing BASE_URL cannot leave this passing
+  // against a URL no longer printed on anything.
+  const payload = buildPayload('K7M3');
+  assert.match(payload, /#K7M3$/);
+
+  await page.evaluate((text) => globalThis.app.scan(text), payload);
   await page.waitForFunction(() => location.hash === '#K7M3');
   assert.equal(await page.$eval('.thing__name', (el) => el.textContent), 'Pan');
 });
