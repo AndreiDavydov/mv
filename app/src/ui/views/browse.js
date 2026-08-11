@@ -5,7 +5,7 @@ import { countLine, displayName, emptyState, icon, thingRow, thumbnail } from '.
 import { urlPool } from '../../platform/images.js';
 
 /**
- * Search across name/tags/room/notes. Typing a 4-character code by hand
+ * Search across name/tags/notes. Typing a 4-character code by hand
  * resolves to exactly the same thing as scanning it — that equivalence is why
  * the label carries the ID in large type.
  */
@@ -17,7 +17,7 @@ export function searchView(app, { things, initialQuery = '' }) {
   const input = h('input.search__input', {
     type: 'search',
     value: initialQuery,
-    placeholder: 'Name, tag, room, note, or a 4-character code',
+    placeholder: 'Name, tag, note, or a 4-character code',
     autocomplete: 'off',
     'aria-label': 'Search',
     onInput: (e) => {
@@ -96,9 +96,15 @@ export function treeView(app, { things }) {
 
   function node(thing, depth) {
     const children = sort(byParent.get(thing.id) ?? []);
-    const label = h('button.tree__label', { type: 'button', onClick: () => app.open(thing.id) },
+    const gone = thing.status === 'gone';
+    const label = h('button.tree__label', {
+      type: 'button',
+      class: { 'is-gone': gone },
+      onClick: () => app.open(thing.id),
+    },
       thumbnail(thing, pool, { size: 'sm' }),
       h('span.tree__name', null, displayName(thing)),
+      gone ? h('span.tag.tag--gone', null, 'gone') : null,
       h('code.tree__id', null, thing.id),
       children.length ? h('span.tree__count', null, plural(children.length, 'inside', 'inside')) : null,
     );
@@ -111,7 +117,7 @@ export function treeView(app, { things }) {
 
   const roots = sort(byParent.get('') ?? []);
   const view = h('section.view.view--list', null,
-    h('div.section__head', null, h('h2', null, 'Everything'), h('span.section__count', null, countLine(things))),
+    h('div.section__head', null, h('h2', null, 'Catalog'), h('span.section__count', null, countLine(things))),
     roots.length
       ? h('div.tree', null, roots.map((thing) => node(thing, 0)))
       : emptyState('Nothing enrolled yet', 'Scan a label to add the first thing.'),

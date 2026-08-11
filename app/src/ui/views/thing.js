@@ -7,7 +7,6 @@ import {
   emptyState,
   icon,
   kindChips,
-  roomChips,
   thumbnail,
 } from '../components.js';
 import { urlPool } from '../../platform/images.js';
@@ -27,7 +26,6 @@ export function thingView(app, { thing, contents, trail }) {
           h('code.thing__id', null, thing.id),
           h('span.pill', { class: `pill--${thing.status}` }, thing.status),
           thing.is_container ? h('span.pill', null, `${icon(thing)} ${thing.container_kind}`) : null,
-          thing.room ? h('span.pill', null, thing.room) : null,
         ),
         breadcrumbLine(trail, (id) => app.open(id)),
       ),
@@ -128,7 +126,6 @@ function historyBlock(app, thing) {
 function editForm(app, thing, pool) {
   const draft = {
     name: thing.name ?? '',
-    room: thing.room,
     notes: thing.notes ?? '',
     tags: (thing.tags ?? []).join(' '),
     is_container: thing.is_container,
@@ -136,24 +133,17 @@ function editForm(app, thing, pool) {
   };
 
   const kindRow = h('div', { class: { 'is-hidden': !draft.is_container } });
-  const roomRow = h('div');
   const renderKind = () => kindRow.replaceChildren(kindChips(draft.container_kind, (k) => {
     draft.container_kind = k;
     renderKind();
   }));
-  const renderRoom = () => roomRow.replaceChildren(roomChips(draft.room, (r) => {
-    draft.room = r;
-    renderRoom();
-  }, { allowCustom: true }));
   renderKind();
-  renderRoom();
 
   return h('form.edit', {
     onSubmit: (e) => {
       e.preventDefault();
       app.saveEdit(thing.id, {
         name: draft.name.trim() || null,
-        room: draft.room,
         notes: draft.notes.trim() || null,
         tags: draft.tags.split(/[\s,]+/).map((t) => t.replace(/^#/, '')).filter(Boolean),
         is_container: draft.is_container,
@@ -177,8 +167,6 @@ function editForm(app, thing, pool) {
       h('span', null, 'This is a container'),
     ),
     kindRow,
-    h('div.field__label', null, 'Room'),
-    roomRow,
     field('Tags', h('input.field__input', {
       type: 'text', value: draft.tags, placeholder: 'kitchen fragile',
       onInput: (e) => (draft.tags = e.target.value),

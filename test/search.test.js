@@ -32,11 +32,14 @@ test('a typed code and a scanned code resolve to the same thing', () => {
   assert.deepEqual(ids(typed).slice(0, 1), ['K7M3']);
 });
 
-test('names beat tags beat rooms beat notes', () => {
+test('names beat tags beat notes', () => {
   assert.equal(searchThings(catalog, { q: 'kitchen' })[0].id, 'BXAA', 'name match first');
   assert.deepEqual(ids(searchThings(catalog, { q: 'heavy' })), ['K7M3']);
-  assert.deepEqual(ids(searchThings(catalog, { q: 'hallway' })), ['K7M5']);
   assert.deepEqual(ids(searchThings(catalog, { q: 'grey' })), ['K7M5']);
+});
+
+test('rooms are no longer searched — the field is not asked for any more', () => {
+  assert.deepEqual(searchThings(catalog, { q: 'hallway' }), []);
 });
 
 test('substring matching is enough', () => {
@@ -62,6 +65,9 @@ test('container filters', () => {
 });
 
 test('filters combine with the query', () => {
-  assert.deepEqual(ids(searchThings(catalog, { q: 'kitchen', unpacked: true })), ['K7M3']);
-  assert.deepEqual(searchThings(catalog, { q: 'kitchen', room: 'Hallway' }), []);
+  assert.deepEqual(ids(searchThings(catalog, { q: 'pan', unpacked: true })), ['K7M3']);
+  // 'Espresso pot' matches by name but is already packed.
+  assert.deepEqual(searchThings(catalog, { q: 'espress', unpacked: true }), []);
+  // 'Kitchen Box A' is the only thing named for a kitchen, and it is packed.
+  assert.deepEqual(searchThings(catalog, { q: 'kitchen', unpacked: true }), []);
 });

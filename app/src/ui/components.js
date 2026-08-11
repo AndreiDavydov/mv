@@ -1,4 +1,4 @@
-import { CONTAINER_KINDS, ROOMS } from '../../../config.js';
+import { CONTAINER_KINDS } from '../../../config.js';
 import { h, plural } from './dom.js';
 
 export const KIND_ICON = {
@@ -6,7 +6,6 @@ export const KIND_ICON = {
   suitcase: '🧳',
   crate: '🗄️',
   bag: '👜',
-  shelf: '🗃️',
 };
 
 export function icon(thing) {
@@ -31,12 +30,14 @@ export function thumbnail(thing, pool, { size = 'md' } = {}) {
 export function thingRow(thing, pool, { onClick, trailing = null, subtitle = null } = {}) {
   return h(
     'button.row',
-    { onClick, type: 'button' },
+    { onClick, type: 'button', class: { 'is-gone': thing.status === 'gone' } },
     thumbnail(thing, pool, { size: 'sm' }),
     h(
       'div.row__text',
       null,
-      h('div.row__title', null, displayName(thing)),
+      h('div.row__title', null,
+        displayName(thing),
+        thing.status === 'gone' ? h('span.tag.tag--gone', null, 'gone') : null),
       h('div.row__sub', null, subtitle ?? statusLine(thing)),
     ),
     h('code.row__id', null, thing.id),
@@ -48,7 +49,6 @@ export function statusLine(thing) {
   const bits = [];
   if (thing.is_container) bits.push(thing.container_kind);
   bits.push(thing.status);
-  if (thing.room) bits.push(thing.room);
   if (thing.tags?.length) bits.push(thing.tags.map((t) => `#${t}`).join(' '));
   return bits.join(' · ');
 }
@@ -86,27 +86,6 @@ export function chipGroup(values, selected, onSelect, { allowClear = true } = {}
   );
 }
 
-/**
- * Rooms are a fixed vocabulary so the same place is spelled the same way every
- * time — but a move always turns up somewhere the list did not anticipate, so
- * anything already in use is offered as a chip and `Other…` adds a new one.
- */
-export function roomChips(selected, onSelect, { extra = [], allowCustom = false } = {}) {
-  const values = [...new Set([...ROOMS, ...extra, selected].filter(Boolean))];
-  const group = chipGroup(values, selected, onSelect);
-  if (allowCustom) {
-    group.append(
-      h('button.chip.chip--add', {
-        type: 'button',
-        onClick: () => {
-          const value = prompt('Room name')?.trim();
-          if (value) onSelect(value);
-        },
-      }, 'Other…'),
-    );
-  }
-  return group;
-}
 export const kindChips = (selected, onSelect) =>
   chipGroup(CONTAINER_KINDS, selected, onSelect, { allowClear: false });
 

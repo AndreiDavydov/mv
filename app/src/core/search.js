@@ -1,7 +1,7 @@
 import { isValidId, normalizeId } from '../../../shared/ids.js';
 
 /**
- * Substring search across name/tags/room/notes, plus the filters from §8.
+ * Substring search across name/tags/notes, plus the filters.
  * Typing a 4-character ID resolves to that thing directly — hand-typing a
  * scuffed label must land in the same place as scanning it.
  *
@@ -41,7 +41,6 @@ function score(thing, needle, asId) {
 
   if (thing.tags?.some((tag) => tag.toLowerCase() === needle)) return 500;
   if (thing.tags?.some((tag) => tag.toLowerCase().includes(needle))) return 400;
-  if (thing.room?.toLowerCase().includes(needle)) return 300;
   if (thing.notes?.toLowerCase().includes(needle)) return 200;
   return 0;
 }

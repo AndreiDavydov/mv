@@ -1,5 +1,5 @@
 import { h } from '../dom.js';
-import { kindChips, roomChips, thumbnail } from '../components.js';
+import { kindChips, thumbnail } from '../components.js';
 import { derivePhotos, urlPool } from '../../platform/images.js';
 
 /**
@@ -18,7 +18,6 @@ export function enrollView(app, { id, packInto }) {
     thumb: null,
     is_container: false,
     container_kind: 'box',
-    room: app.lastRoom ?? null,
   };
 
   const shutter = h('button.shutter', {
@@ -91,24 +90,10 @@ export function enrollView(app, { id, packInto }) {
     h('span', null, 'This is a container'),
   );
 
-  const roomRow = h('div.enroll__rooms', null,
-    roomChips(draft.room, (room) => {
-      draft.room = room;
-      app.lastRoom = room;
-      rerenderRooms();
-    }));
-
   function rerenderChips() {
     kindRow.replaceChildren(kindChips(draft.container_kind, (kind) => {
       draft.container_kind = kind;
       rerenderChips();
-    }));
-  }
-  function rerenderRooms() {
-    roomRow.replaceChildren(roomChips(draft.room, (room) => {
-      draft.room = room;
-      app.lastRoom = room;
-      rerenderRooms();
     }));
   }
 
@@ -145,7 +130,6 @@ export function enrollView(app, { id, packInto }) {
           thumb: draft.thumb,
           is_container: quick ? false : draft.is_container,
           container_kind: draft.container_kind,
-          room: quick ? (app.lastRoom ?? null) : draft.room,
         },
       });
     } catch (error) {
@@ -172,8 +156,6 @@ export function enrollView(app, { id, packInto }) {
       h('div.field', null, name),
       containerToggle,
       kindRow,
-      h('div.field__label', null, 'Room'),
-      roomRow,
     ),
     h('div.enroll__actions', null,
       h('button.btn.btn--big', { type: 'button', onClick: () => save({ quick: true }) },

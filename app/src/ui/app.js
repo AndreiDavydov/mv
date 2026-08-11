@@ -27,7 +27,6 @@ export class App {
   video;
 
   lastThing = null;
-  lastRoom = null;
   targetName = null;
   cameraError = null;
 
@@ -215,6 +214,23 @@ export class App {
   async stopPacking() {
     await this.#setSession(stopPacking(this.session));
     return this.#refreshChrome();
+  }
+
+  /**
+   * Pack a thing picked from the list instead of scanned. Same write, same
+   * event, same undo — the only difference is that a tap is unambiguous, so a
+   * container chosen deliberately is packed rather than treated as a request
+   * to switch target.
+   */
+  async packExisting(id) {
+    const thing = await this.catalog.get(id);
+    if (!thing || !this.session.target_id) return;
+    await this.attempt(() => this.catalog.packInto(id, this.session.target_id), {
+      failure: `${displayName(thing)} was NOT packed`,
+    });
+    play('rising');
+    this.toast(`${displayName(thing)} packed`, 'good', 5000, this.#undoAction());
+    await this.#refreshChrome();
   }
 
   async unpack(id) {
@@ -454,7 +470,7 @@ export class App {
     this.#tabbar.replaceChildren(
       tab('#/scan', '⧉', 'Scan'),
       tab('#/search', '⌕', 'Search'),
-      tab('#/tree', '⊞', 'Tree'),
+      tab('#/tree', '⊞', 'Catalog'),
       tab('#/unnamed', '✎', 'Unnamed'),
       tab('#/backup', '⬇', 'Backup'),
     );

@@ -57,22 +57,14 @@ export const ID_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 export const ID_LENGTH = 4;
 
 /**
- * Rooms offered as chips. A fixed vocabulary keeps the same place spelled the
- * same way; the edit screen's "Other…" chip adds a one-off when the move turns
- * up somewhere this list did not anticipate.
+ * Rooms are no longer asked for. Nobody filled the field during an actual pack,
+ * so the chips were noise on the fastest screen in the app. The database column
+ * stays — dropping it is a migration, restoring the UI is a few lines.
  */
-export const ROOMS = [
-  'Kitchen',
-  'Living room',
-  'Bedroom',
-  'Office',
-  'Bathroom',
-  'Hallway',
-  'Cellar',
-  'Balcony',
-];
+export const ROOMS = [];
 
-export const CONTAINER_KINDS = ['box', 'suitcase', 'crate', 'bag', 'shelf'];
+/** A shelf is not something you carry, so it is not a container. */
+export const CONTAINER_KINDS = ['box', 'suitcase', 'crate', 'bag'];
 
 /** Nag for a fresh export after this many days or events, whichever comes first. */
 export const BACKUP_NAG_DAYS = 3;

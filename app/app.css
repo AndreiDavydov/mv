@@ -638,3 +638,42 @@ p { margin: 0 0 8px; }
   border-radius: 999px;
   cursor: pointer;
 }
+
+/* ── packing pick-list ──────────────────────────────────────────────────── */
+
+/* The viewfinder yields room once there is a list worth reading. */
+.scan__stage--short { flex: none; height: 34vh; }
+
+.pick { padding: 4px var(--pad) var(--pad); display: flex; flex-direction: column; gap: 10px; }
+.pick__search { font-size: 16px; }
+.pick__list { max-height: none; }
+.pick__add {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+
+/* A thing marked gone is no longer tracked; it must not read like the rest. */
+.is-gone { opacity: 0.55; }
+.is-gone .row__title, .is-gone .tree__name { text-decoration: line-through; }
+
+.tag {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: none;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.tag--gone { color: var(--bad); background: #241618; border: 1px solid #4a2725; }
