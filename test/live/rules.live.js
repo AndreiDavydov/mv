@@ -225,3 +225,79 @@ test('a retired record cannot have its label moved again', async (t) => {
   const { retired } = await catalog.recode(X);
   await assert.rejects(() => catalog.recode(retired), /no label/);
 });
+
+// ── what the database refuses on its own ─────────────────────────────────────
+//
+// The client already refuses all of these. These prove the database does too,
+// so a second writer — an import, a script, a future client — cannot produce a
+// state the model says is impossible.
+
+const raw = () => catalog.raw;
+
+/** Migration 004 is applied when a non-container cannot be a parent. */
+async function containmentEnforced() {
+  await raw().from('things').insert({ id: 'ZZ68', name: 'probe item', is_container: false });
+  const { error } = await raw().from('things')
+    .insert({ id: 'ZZ69', parent_id: 'ZZ68', status: 'packed' });
+  await raw().from('things').delete().in('id', ['ZZ68', 'ZZ69']);
+  return Boolean(error);
+}
+
+test('nothing can be packed into something that is not a container', async (t) => {
+  if (!(await containmentEnforced())) {
+    t.skip('needs supabase/migration-004-containment.sql');
+    return;
+  }
+  await catalog.enroll({ id: X, name: 'A plain item' });
+  const { error } = await raw().from('things').insert({ id: Y, parent_id: X, status: 'packed' });
+  assert.ok(error, 'an item must not be able to contain anything');
+  assert.match(error.message, /not a container/);
+});
+
+test('nothing can be packed into a container that is gone', async (t) => {
+  if (!(await containmentEnforced())) {
+    t.skip('needs supabase/migration-004-containment.sql');
+    return;
+  }
+  await catalog.enroll({ id: BOX, name: 'Box', is_container: true });
+  await catalog.markGone(BOX);
+
+  const { error } = await raw().from('things').insert({ id: X, parent_id: BOX, status: 'packed' });
+  assert.ok(error, 'a gone box must not accept contents');
+  assert.match(error.message, /was marked gone/);
+});
+
+test('an item cannot carry a container kind', async (t) => {
+  if (!(await containmentEnforced())) {
+    t.skip('needs supabase/migration-004-containment.sql');
+    return;
+  }
+  const { error } = await raw().from('things')
+    .insert({ id: X, is_container: false, container_kind: 'crate' });
+  assert.ok(error);
+});
+
+test('deleting a container releases what is in it rather than failing', async (t) => {
+  if (!(await containmentEnforced())) {
+    t.skip('needs supabase/migration-004-containment.sql');
+    return;
+  }
+  // This is the path undo takes when reversing the enrolment of a container
+  // somebody has since packed into.
+  await catalog.enroll({ id: BOX, name: 'Box', is_container: true });
+  await catalog.enroll({ id: X, name: 'Pan' });
+  await catalog.packInto(X, BOX);
+
+  const { error } = await raw().from('things').delete().eq('id', BOX);
+  assert.ok(!error, `deleting the box failed: ${error?.message}`);
+
+  const freed = await catalog.get(X);
+  assert.equal(freed.parent_id, null, 'its contents came out');
+  assert.equal(freed.status, 'unpacked');
+});
+
+test('packed and loose still cannot disagree', async () => {
+  assert.ok((await raw().from('things').insert({ id: X, parent_id: null, status: 'packed' })).error);
+  await catalog.enroll({ id: BOX, name: 'Box', is_container: true });
+  assert.ok((await raw().from('things').insert({ id: Y, parent_id: BOX, status: 'unpacked' })).error);
+});
