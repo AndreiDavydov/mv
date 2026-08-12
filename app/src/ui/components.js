@@ -99,6 +99,41 @@ export function countLine(things) {
 }
 
 /**
+ * Pick one of a list. Used for "put this in…", where the alternative is making
+ * someone walk to the box, open packing mode and scan the thing they are
+ * already looking at.
+ */
+export function chooseSheet({ title, detail, options, onPick, onCancel, empty = 'Nothing to choose from.' }) {
+  const close = (fn, arg) => () => {
+    sheet.remove();
+    fn?.(arg);
+  };
+  const sheet = h(
+    'div.sheet-backdrop',
+    { onClick: (e) => e.target === sheet && close(onCancel)() },
+    h(
+      'div.sheet',
+      { role: 'dialog', 'aria-modal': 'true' },
+      h('h2.sheet__title', null, title),
+      detail ? h('p.sheet__detail', null, detail) : null,
+      options.length
+        ? h('div.list.sheet__list', null, options.map((option) =>
+            h('button.row', { type: 'button', onClick: close(onPick, option.value) },
+              h('div.row__text', null,
+                h('div.row__title', null, option.label),
+                option.sub ? h('div.row__sub', null, option.sub) : null),
+              option.code ? h('code.row__id', null, option.code) : null,
+            )))
+        : h('p.muted', null, empty),
+      h('div.sheet__actions', null,
+        h('button.btn', { type: 'button', onClick: close(onCancel) }, 'Cancel')),
+    ),
+  );
+  document.body.append(sheet);
+  return sheet;
+}
+
+/**
  * A yes/no question. The only one in the scan loop is "switch to packing into
  * X?", which earns it by being genuinely ambiguous.
  */

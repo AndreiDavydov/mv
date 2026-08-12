@@ -2,8 +2,11 @@
 
 A UX audit over four things — two containers **A** and **B**, two items **x**
 and **y** — covering every state they can be in and every route a person has to
-each action. Written against the code as it stands, not as intended; the gaps at
-the end are real.
+each action. Written against the code as it stands, not as intended.
+
+Everything in §4 and §5 has since been fixed; `app/src/core/capabilities.js` is
+now the single place that decides what a thing can do, consulted by the buttons,
+by the data layer, and backed by database constraints.
 
 ---
 
@@ -42,8 +45,8 @@ suitcase inside a crate, a pan inside the suitcase. The breadcrumb walks it, the
 Catalog nests it, and the manifest prints it.
 
 Adding `gone` (any subset of the four, and a gone thing is always loose) brings
-it to 128. Every one of those 128 is reachable — but see §4.2 and §4.3, because
-two of the routes into them are wrong.
+it to 128. Every one is reachable, and — since §4 — every route into one is a
+deliberate action rather than an accident.
 
 ## 3. Every action, and every way to reach it
 
@@ -87,19 +90,19 @@ two of the routes into them are wrong.
 | Rename | Edit | ✅ |
 | Edit tags / notes / kind | Edit | ✅ |
 | Turn an item into a container (or back) | Edit toggle | ✅ |
-| Replace the photo | ❌ — ENROLL is the only screen that takes one | ❌ |
+| Replace the photo | ENROLL is still the only screen that takes one | ❌ |
 | Pack something into a box | scan it while packing into that box | ✅ |
 | | tap it in the pick-list while packing | ✅ |
-| | **from the item's own page** — "put this in…" | ❌ |
+| | **Put in a box…** on the item's own page | ✅ |
 | Move between boxes | pack it into the other one; logged as unpacked + packed | ✅ |
 | Take something out | **Take out** on its page | ✅ |
-| Empty a box | ❌ — only one item at a time, from each item's page | ❌ |
-| Mark as gone | **Gone** on its page, behind one confirmation | ✅ |
-| Bring a gone thing back | ❌ from the UI — but see §4.2 | ⚠️ |
+| Empty a box | **Empty** on a container — everything out, one undoable action | ✅ |
+| Mark as gone | **Gone** — a container releases its contents first | ✅ |
+| Bring a gone thing back | **Restore** on its page · or scan it while packing, which asks | ✅ |
 | Undo | the toast on a pack, for about five seconds | ✅ |
 | Undo anything else | ❌ by design — enrolment and edits are deliberate | — |
 | Delete permanently | ❌ — nothing is ever hard-deleted except an undone enrolment | — |
-| **Reassign a code to a different thing** | ❌ — see §5 | ❌ |
+| **Move a label to a different thing** | **Move this label…** — see §5 | ✅ |
 
 ### Housekeeping
 
@@ -113,99 +116,81 @@ two of the routes into them are wrong.
 
 ---
 
-## 4. Where the model leaks
+## 4. Where the model used to leak — all fixed
 
-### 4.1 A gone container keeps its contents
+Every rule below now lives in `app/src/core/capabilities.js`, which the buttons,
+the data layer and the database all consult. A rule can no longer be enforced by
+whether a button happened to be rendered.
 
-`Gone` clears the thing's own `parent_id` but does nothing to its children. Mark
-box **A** gone while **x** is inside it and the catalog shows a struck-through
-box that still contains something — and `x` still says `packed`, in a box that
-no longer exists.
 
-Right behaviour: marking a container gone should take everything out of it first
-(each as its own `unpacked` event), or refuse while it is not empty. Refusing is
-probably better: "A still has 2 things in it. Take them out first."
+### 4.1 A gone container kept its contents — fixed
 
-### 4.2 Packing resurrects a gone thing, silently
+Marking a box gone now takes everything out of it first. The contents go back to
+the catalog loose, as their own `unpacked` events, and it is all one group — so a
+single undo puts the box back *and* everything into it. Releasing rather than
+refusing: telling someone to empty a box by hand before they may throw it away
+is a chore, not a safeguard. A database trigger is the backstop.
 
-The pick-list correctly hides gone things. **Scanning does not.** Scan a gone
-item while packing and `packInto` writes `status: 'packed'` over `gone` with no
-comment — so the one route back from gone is an accident, and there is no
-deliberate one.
+### 4.2 Packing resurrected a gone thing, silently — fixed
 
-Right behaviour: scanning a gone thing while packing should ask — "x was marked
-gone. Put it back?" — and a `Gone` page should offer an explicit **Restore**.
+`packInto` now refuses a gone thing outright, so the rule holds no matter who
+calls it. Scanning one while packing asks — *"Old lamp was marked gone. Bring it
+back?"* — and its page offers an explicit **Restore**, which returns it loose
+rather than silently to whichever box it used to be in.
 
-### 4.3 `status` and `parent_id` can disagree in principle
+### 4.3 `status` and `parent_id` could disagree — fixed
 
-Nothing in the database enforces `packed ⟺ parent_id is not null`. The client
-always sets them together, so it holds today, but an import or a future writer
-could break it. A `CHECK` constraint would make it true rather than customary.
+`check ((status = 'packed') = (parent_id is not null))`, in migration 002, which
+also repairs any row already inconsistent.
 
 ### 4.4 No photo after enrolment
 
-The photo can only be taken on the screen you see once, at the moment you first
-scan the label. Get a bad shot and there is no way back to it. Edit should take
-one.
+Still open. The photo can only be taken on the screen you see once.
 
 ---
 
-## 5. Reassigning a code — the real problem
+## 5. Moving a label to something else
 
-Labels get reused. A box is emptied at the destination and refilled with
-something else. A label peels off and goes on a different thing. A label was
-stuck on the wrong item in the first place. Today none of that is possible:
-enrolling a code that exists fails with *"already enrolled"*, and there is no
-other route.
+Labels get reused: a box is emptied and refilled, a sticker goes on the wrong
+thing, a label is peeled off something sold. The code *is* the identity —
+`things.id` is the primary key and every event points at it — so freeing one
+without destroying its history needed a decision.
 
-**Why it is not a small fix.** The code *is* the identity — `things.id` is the
-primary key and every event points at it. Reassigning a code therefore means one
-of:
-
-| option | what happens to the old thing's history | cost |
-|---|---|---|
-| **(a) Overwrite in place** — clear name/photo/parent, keep the row | destroyed; the log now describes two different objects under one id | trivial |
-| **(b) Archive then reuse** — copy the old thing aside, free the code | preserved, but the archived copy has no code, so nothing can be scanned to reach it | small migration |
-| **(c) Separate identity from label** — `things.thing_id` (uuid) as the key, `things.code` as a reassignable unique field | preserved and intact; the old thing stays in the catalog, codeless, with its full history | one migration, touches every query |
-
-**(c) is the correct model** and the only one that survives a second reuse of
-the same label. It is also the one that makes "this label is now on something
-else" an ordinary event rather than a special case:
+**What was built: retire, don't overwrite.** `K7M3` becomes `K7M3-1`, taking its
+name, photo, contents and entire history with it, and `K7M3` is free to scan onto
+something new. The `-1` suffix is not a code you can scan; it marks a record whose
+label has moved on. Reuse it again and the next becomes `K7M3-2`.
 
 ```
-things:  thing_id (uuid, pk) · code (text, unique, nullable) · …
-events:  thing_id → things.thing_id
+before   K7M3   "Cast iron pan"   ← the sticker is on the pan
+after    K7M3-1 "Cast iron pan"   ← the record, whole, no longer labelled
+         K7M3   "Chopping board"  ← the sticker is on the board now
 ```
 
-Reassigning becomes: clear `code` on the old row, set it on the new one, write a
-`recoded` event on both. The old thing remains searchable and keeps its photos
-and history; it simply has no label any more, which is exactly what is true of
-it in the physical world.
+Why not a uuid primary key with a reassignable `code` column: it is the textbook
+answer and it would work, but it rewrites every query and every foreign key for a
+gain that retiring already delivers. Retiring is one CHECK constraint, one
+`ON UPDATE CASCADE`, and an id rename — and it survives the same label being
+reused any number of times, which is the property that actually matters.
 
-**Recommended flow.** Scanning a code that is already enrolled shows the thing,
-as it does now. Its page gains **This label is on something else now** →
-confirm → the old thing loses the code and the ENROLL screen opens on it fresh.
-The confirmation must name what it is displacing: *"K7M3 currently means 'Cast
-iron pan'. It will keep its history but lose its label."*
+**The flow.** The thing's page offers **Move this label…**, which names what it
+is displacing: *"K7M3 currently means 'Cast iron pan'. It keeps its photo, its
+contents and its whole history, but loses the label."* Confirm, and the scanner
+opens with the code free.
 
-**Interaction with the label sheets.** Reuse and fresh printing are different
-things. `printed_up_to` must not move when a code is reassigned — the code was
-already printed, it is only changing meaning. Nothing in the generator needs to
-know.
+**Interaction with the label sheets.** `printed_up_to` does not move: the code was
+already printed, it is only changing meaning. The generator needs to know nothing.
 
----
+**Requires** `supabase/migration-002-integrity.sql`.
 
-## 6. Ranked gaps
+## 6. Status
 
-1. **Reassigning a code** (§5) — the whole point of a durable label is that it
-   outlives its first use. Needs the identity migration.
-2. **Emptying a box** — the move has a second half and there is no support for
-   it. Scan a box → *Unpack all*, or tick items off as they come out.
-3. **A gone container keeps its contents** (§4.1) — produces a state the model
-   says is impossible.
-4. **Packing silently resurrects a gone thing** (§4.2) — plus no deliberate
-   Restore.
-5. **Pack from the item's own page** — the only way to put x in A is to be
-   holding x with the camera open, or to be already packing A.
-6. **Replace a photo** (§4.4).
-7. **`packed ⟺ parent_id` as a database constraint** (§4.3).
+| gap | |
+|---|---|
+| Reassigning a code (§5) | done — needs migration 002 applied |
+| Emptying a box | done — **Empty** on a container, one undoable action |
+| A gone container keeping its contents (§4.1) | done — contents are released first |
+| Packing resurrecting a gone thing (§4.2) | done — refused, and asks; **Restore** added |
+| Pack from the item's own page | done — **Put in a box…** |
+| `packed ⟺ parent_id` in the database (§4.3) | done — migration 002 |
+| Replace a photo (§4.4) | **open** |

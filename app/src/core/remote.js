@@ -2,6 +2,7 @@ import { createClient } from '../../../vendor/supabase.js';
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from '../../../config.js';
 import { isValidId, normalizeId } from '../../../shared/ids.js';
 import { DEFAULT_SESSION, eventTypeFor, pick, pickUndoGroup, summary } from './model.js';
+import { assertCan, hasLiveLabel, retiredCode } from './capabilities.js';
 
 /**
  * The shared catalog, backed by Postgres.
@@ -202,6 +203,10 @@ export class RemoteCatalog {
     if (!thing) throw new Error(`${thingId} is not enrolled`);
     if (thing.parent_id === target && thing.status === 'packed') return thing;
 
+    // Packing used to write `packed` straight over `gone`, so the only way back
+    // from gone was an accident. One rule, asked here and by the buttons.
+    assertCan('pack', thing, { packingTarget: target });
+
     const steps = [];
     if (thing.parent_id && thing.parent_id !== target) {
       steps.push({ id: thingId, patch: { parent_id: null, status: 'unpacked' }, type: 'unpacked' });
@@ -215,8 +220,95 @@ export class RemoteCatalog {
     return this.update(id, { parent_id: null, status: 'unpacked' }, { type: 'unpacked' });
   }
 
-  markGone(id) {
-    return this.update(id, { status: 'gone', parent_id: null }, { type: 'deleted' });
+  /**
+   * Mark a thing gone — sold, donated, binned.
+   *
+   * A container comes with its contents: everything inside is taken out first
+   * and stays in the catalog, loose. Leaving them pointing at a box the catalog
+   * says no longer exists is the one state this model must never produce. It is
+   * all one group, so a single undo puts the box back and everything into it.
+   */
+  async markGone(id) {
+    const thingId = normalizeId(id);
+    const thing = await this.get(thingId);
+    if (!thing) throw new Error(`${thingId} is not enrolled`);
+
+    const children = thing.is_container ? await this.childrenOf(thingId) : [];
+    assertCan('markGone', thing, { childCount: children.length });
+
+    const steps = children.map((child) => ({
+      id: child.id,
+      patch: { parent_id: null, status: 'unpacked' },
+      type: 'unpacked',
+    }));
+    steps.push({ id: thingId, patch: { status: 'gone', parent_id: null }, type: 'deleted' });
+
+    const results = await this.#applyGroup(steps);
+    return results.at(-1);
+  }
+
+  /** Bring a gone thing back. It returns loose, never to wherever it used to be. */
+  async restore(id) {
+    const thing = await this.get(id);
+    if (!thing) throw new Error(`${normalizeId(id)} is not enrolled`);
+    assertCan('restore', thing);
+    return this.update(id, { status: 'unpacked', parent_id: null }, { type: 'restored' });
+  }
+
+  /**
+   * Take everything out of a container in one action — the other half of the
+   * move, when a box is opened at the far end and emptied.
+   */
+  async emptyContainer(id) {
+    const thingId = normalizeId(id);
+    const thing = await this.get(thingId);
+    if (!thing) throw new Error(`${thingId} is not enrolled`);
+
+    const children = await this.childrenOf(thingId);
+    assertCan('empty', thing, { childCount: children.length });
+
+    return this.#applyGroup(children.map((child) => ({
+      id: child.id,
+      patch: { parent_id: null, status: 'unpacked' },
+      type: 'unpacked',
+    })));
+  }
+
+  /**
+   * Move a label onto something else.
+   *
+   * The old record is retired rather than overwritten: its id becomes `K7M3-1`,
+   * carrying its history, photos and contents with it, and the code `K7M3` is
+   * freed for a fresh enrolment. That is what lets the same sticker be reused
+   * twice without the log describing two different objects under one id.
+   *
+   * @returns {Promise<{freed: string, retired: string}>}
+   */
+  async recode(id) {
+    const code = normalizeId(id);
+    const thing = await this.get(code);
+    if (!thing) throw new Error(`${code} is not enrolled`);
+    assertCan('recode', thing);
+
+    const { data: existing } = await this.#db.from('things').select('id').like('id', `${code}-%`);
+    const retired = retiredCode(code, (existing ?? []).map((r) => r.id));
+
+    // The self-reference cascades, so anything inside follows the box.
+    const { error } = await this.#db.from('things').update({ id: retired }).eq('id', code);
+    if (error) throw wrap(error, 'could not retire the old record');
+
+    // Events have no foreign key — the log has to outlive the rows it describes
+    // — so its references are moved by hand.
+    await this.#db.from('events').update({ thing_id: retired }).eq('thing_id', code);
+
+    await this.#log([{
+      thing_id: retired,
+      type: 'recoded',
+      parent_id: null,
+      payload: { group: this.#group(), before: { id: code }, after: { id: retired } },
+    }]);
+
+    return { freed: code, retired };
   }
 
   /**

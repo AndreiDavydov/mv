@@ -686,3 +686,13 @@ p { margin: 0 0 8px; }
 }
 .pick__empty b { display: block; margin-bottom: 4px; }
 .pick__empty p { margin: 0; font-size: 14px; }
+
+.sheet__list { max-height: 46vh; overflow-y: auto; margin-top: 12px; }
+.retired-note {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--warn);
+  background: #23190c;
+  border: 1px solid #5a4318;
+  border-radius: 10px;
+}

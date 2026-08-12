@@ -7,6 +7,7 @@ import { CameraScanner, KeyboardScanner } from '../platform/scanner.js';
 import { play, setMuted, warmUp } from '../platform/feedback.js';
 import { h, plural } from './dom.js';
 import { askSheet, displayName } from './components.js';
+import { actionsFor } from '../core/capabilities.js';
 import { scanView } from './views/scan.js';
 import { enrollView } from './views/enroll.js';
 import { thingView, unknownView } from './views/thing.js';
@@ -144,6 +145,32 @@ export class App {
         return this.go('#/enroll');
 
       case 'pack': {
+        const verdict = actionsFor(thing, { packingTarget: intent.into }).pack;
+        if (!verdict.allowed) {
+          // The only one worth a question: it was marked gone and here it is.
+          if (thing?.status === 'gone') {
+            play('query');
+            askSheet({
+              title: `${displayName(thing)} was marked gone`,
+              detail: 'It was sold, donated or binned. Putting it in a box brings it back into ' +
+                'the catalog as a real thing again.',
+              confirmLabel: 'Bring it back',
+              cancelLabel: 'Leave it gone',
+              onConfirm: async () => {
+                await this.attempt(() => this.catalog.restore(intent.id));
+                await this.attempt(() => this.catalog.packInto(intent.id, intent.into));
+                this.toast(`${displayName(thing)} restored and packed`, 'good', 5000, this.#undoAction());
+                await this.#refreshChrome();
+              },
+              onCancel: () => this.open(intent.id),
+            });
+            return;
+          }
+          play('error');
+          this.toast(verdict.reason, 'warn');
+          return;
+        }
+
         await this.attempt(() => this.catalog.packInto(intent.id, intent.into), {
           failure: `${displayName(thing)} was NOT packed`,
         });
@@ -262,9 +289,43 @@ export class App {
   }
 
   async markGone(id) {
-    await this.attempt(() => this.catalog.markGone(id), { failure: 'Not marked as gone' });
-    this.toast('Marked as gone', 'good');
+    const released = await this.attempt(() => this.catalog.markGone(id), { failure: 'Not marked as gone' });
+    this.toast('Marked as gone', 'good', 5000, this.#undoAction());
     return this.open(id, { replace: true });
+  }
+
+  async restore(id) {
+    await this.attempt(() => this.catalog.restore(id), { failure: 'Not restored' });
+    this.toast('Back in the catalog', 'good', 5000, this.#undoAction());
+    return this.open(id, { replace: true });
+  }
+
+  async emptyContainer(id) {
+    const emptied = await this.attempt(() => this.catalog.emptyContainer(id), { failure: 'Not emptied' });
+    this.toast(`${plural(emptied?.length ?? 0, 'thing')} back in the catalog`, 'good', 5000, this.#undoAction());
+    return this.open(id, { replace: true });
+  }
+
+  /** Pack from the thing's own page, choosing the box rather than scanning it. */
+  async packIntoBox(id, boxId) {
+    const thing = await this.catalog.get(id);
+    await this.attempt(() => this.catalog.packInto(id, boxId), {
+      failure: `${displayName(thing)} was NOT packed`,
+    });
+    play('rising');
+    this.toast(`${displayName(thing)} → ${displayName(await this.catalog.get(boxId))}`, 'good', 5000, this.#undoAction());
+    return this.open(id, { replace: true });
+  }
+
+  /**
+   * Free a label so it can be scanned onto something else. The old record is
+   * retired, not overwritten, and stays in the catalog with its history.
+   */
+  async recode(id) {
+    const result = await this.attempt(() => this.catalog.recode(id), { failure: 'The label was not freed' });
+    if (!result) return;
+    this.toast(`${result.freed} is free — scan it onto the new thing`, 'good', 6000);
+    return this.go('#/scan');
   }
 
   async saveEdit(id, patch) {
