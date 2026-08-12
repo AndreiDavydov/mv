@@ -677,3 +677,12 @@ p { margin: 0 0 8px; }
   vertical-align: middle;
 }
 .tag--gone { color: var(--bad); background: #241618; border: 1px solid #4a2725; }
+
+.pick__empty {
+  padding: 16px;
+  background: var(--surface);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+}
+.pick__empty b { display: block; margin-bottom: 4px; }
+.pick__empty p { margin: 0; font-size: 14px; }

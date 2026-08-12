@@ -40,6 +40,9 @@ export class App {
   #navigating = false;
   #liveTimer = null;
   #online = true;
+  #mountToken = 0;
+  #routeAgain = false;
+  #saving = false;
 
   constructor(root) {
     this.#root = root;
@@ -105,6 +108,12 @@ export class App {
       return;
     }
 
+    // A save is several round trips, and in packing mode the camera is still
+    // pointed at the world the whole time. A scan landing mid-save used to
+    // reopen ENROLL on the code that was already being written, and then fail
+    // trying to enrol it twice.
+    if (this.#saving) return;
+
     const { id } = parsed;
     const thing = (await this.catalog.get(id)) ?? null;
     const { intent, session } = decideScan(this.session, { id, ts: Date.now(), thing, source });
@@ -128,8 +137,11 @@ export class App {
         return this.open(intent.id);
 
       case 'enroll':
+        // Navigate rather than mounting directly. A view the address bar does
+        // not know about is a view any later route will happily paint over —
+        // and the later route is right, because the URL still says '#/scan'.
         this.#pendingEnroll = { id: intent.id, packInto: intent.packInto };
-        return this.#mount(enrollView(this, this.#pendingEnroll));
+        return this.go('#/enroll');
 
       case 'pack': {
         await this.attempt(() => this.catalog.packInto(intent.id, intent.into), {
@@ -163,6 +175,16 @@ export class App {
   // ── enrolment ────────────────────────────────────────────────────────────
 
   async completeEnroll({ id, packInto, quick, fields }) {
+    if (this.#saving) return;
+    this.#saving = true;
+    try {
+      return await this.#completeEnroll({ id, packInto, quick, fields });
+    } finally {
+      this.#saving = false;
+    }
+  }
+
+  async #completeEnroll({ id, packInto, quick, fields }) {
     // The photo goes to shared storage first: the row carries URLs, so every
     // other screen can show the picture without asking the device that took it.
     const { photo, thumb, ...rest } = fields;
@@ -309,11 +331,26 @@ export class App {
   }
 
   async #route() {
-    if (this.#navigating) return;
+    // Dropping a concurrent route leaves the screen showing the previous one
+    // while the address says otherwise. Remember it and run it after.
+    if (this.#navigating) {
+      this.#routeAgain = true;
+      return;
+    }
     this.#navigating = true;
+
+    /**
+     * A route reads the network before it can render. A scan in the meantime
+     * mounts ENROLL immediately — and without this the slower route would
+     * paint over it a moment later, losing the code the person just scanned.
+     */
+    const token = this.#mountToken;
+    const stale = () => this.#mountToken !== token;
+
     try {
       const hash = location.hash.replace(/^#/, '');
       this.session = await this.catalog.session();
+      if (stale()) return;
 
       // A bare 4-character fragment is the QR deep link: same path whether it
       // arrived from the in-app scanner or the phone's stock camera app.
@@ -329,10 +366,12 @@ export class App {
           thing.is_container ? this.catalog.childrenOf(id) : [],
           this.catalog.breadcrumb(id),
         ]);
+        if (stale()) return;
         return void this.#mount(thingView(this, { thing, contents, trail }));
       }
 
       const [, section, param] = hash.split('/');
+      if (stale()) return;
       switch (section) {
         case 'search':
           return void this.#mount(searchView(this, { things: await this.catalog.all() }));
@@ -360,10 +399,15 @@ export class App {
     } finally {
       this.#navigating = false;
       await this.#refreshChrome();
+      if (this.#routeAgain) {
+        this.#routeAgain = false;
+        await this.#route();
+      }
     }
   }
 
   async #mount(view) {
+    this.#mountToken++;
     if (this.#current?.destroy) this.#current.destroy();
     // The camera is only ever open on the screens that show a viewfinder;
     // leaving it running behind a list view drains the battery for nothing.

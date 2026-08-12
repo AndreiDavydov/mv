@@ -46,10 +46,9 @@ was expected, what happened.
 
 ## Also outstanding
 
-- **`npm run test:e2e` is stale.** It still drives IndexedDB directly and clicks
-  the Undo tab that no longer exists, so parts of it are broken or assert
-  nothing. Real coverage now lives in `npm run test:live` (23 tests against the
-  real database). The suite needs rewriting against the shared catalog.
+- ~~**`npm run test:e2e` is stale.**~~ Rewritten. `test/e2e/` is gone; every
+  test that needs the database lives in `test/live/` (38 tests, ~4 min).
+  `npm test` stays pure and instant (83 tests, no network).
 - **The printed label test has never been run.** `proofs/sheet-2222.pdf` is
   ready; five labels need to scan first-try at arm's length in poor light. The
   modules are 0.551 mm, below the 0.72 mm the original brief assumed — see the

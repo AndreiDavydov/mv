@@ -1,4 +1,4 @@
 node_modules/
-test/e2e/.media/
+test/live/.media/
 proofs/screens/
 .DS_Store

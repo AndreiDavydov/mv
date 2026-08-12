@@ -11,10 +11,9 @@ reason.
 ```bash
 npm install
 npm run vendor          # bundles the npm deps into /vendor (output is committed)
-npm test                # 82 unit tests, no browser, no network
-npm run test:live       # 21 tests against the real Supabase project, incl. two
-                        #   isolated browsers proving one sees the other's scan
-npm run test:e2e        # browser tests for the scan pipeline
+npm test                # 83 unit tests — pure rules, no browser, no network
+npm run test:live       # 38 tests against the real Supabase project, including
+                        #   two isolated browsers proving one sees the other's scan
 npm run serve           # http://localhost:8087/labels/  and  /app/
 ```
 
@@ -64,10 +63,9 @@ tests only.
 | script | what it does |
 |---|---|
 | `npm run vendor` | bundle `qrcode`, `jsqr`, `fflate`, `supabase-js` into `/vendor` as plain ESM |
-| `npm test` | unit tests — pure rules, no browser, no network |
-| `npm run test:live` | integration tests against the real Supabase project |
-| `npm run test:e2e` | browser tests (puppeteer-core driving the installed Chrome) |
-| `npm run test:all` | unit + e2e |
+| `npm test` | unit tests — pure rules, no browser, no network (83, ~1s) |
+| `npm run test:live` | everything that needs the database, browsers included (38, ~4min) |
+| `npm run test:all` | both |
 | `npm run serve [port]` | static dev server; `localhost` is a secure context, so `getUserMedia` and service workers behave as on Pages |
 | `npm run proofs` | full-scale A4 sheet PDF + a single label rendered on a box |
 | `npm run shots` | screenshot every screen at phone size into `proofs/screens/` |

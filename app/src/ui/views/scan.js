@@ -62,6 +62,7 @@ export function scanView(app) {
   });
 
   let candidates = [];
+  let total = 0;
 
   function renderPicks() {
     const found = searchThings(candidates, { q: filter.value });
@@ -84,7 +85,21 @@ export function scanView(app) {
               h('code.row__id', null, thing.id),
               h('span.pick__add', null, '+'),
             ))
-        : [h('p.muted', null, filter.value ? 'Nothing matches.' : 'Everything is already packed.')]),
+        : [emptyPick()]),
+    );
+  }
+
+  /**
+   * An empty list is usually correct, not broken — everything is already in
+   * this box, or the catalog is new. Say which, and say what the mode is for.
+   */
+  function emptyPick() {
+    if (filter.value) return h('p.muted', null, 'Nothing matches that.');
+    return h('div.pick__empty', null,
+      h('b', null, total ? 'Nothing left to add' : 'Nothing else in the catalog yet'),
+      h('p.muted', null,
+        'Scan any unused label and it will be enrolled straight into this box — ' +
+        'that is what packing mode is for. Tap Done when the box is full.'),
     );
   }
 
@@ -96,12 +111,27 @@ export function scanView(app) {
    */
   async function load() {
     if (!packing) return;
-    pool.release();
-    const all = await app.catalog.all();
-    candidates = all.filter(
-      (t) => t.id !== app.session.target_id && t.parent_id !== app.session.target_id && t.status !== 'gone',
-    );
-    renderPicks();
+    try {
+      const all = await app.catalog.all();
+      pool.release();
+      total = all.length;
+      candidates = all.filter(
+        (t) => t.id !== app.session.target_id && t.parent_id !== app.session.target_id && t.status !== 'gone',
+      );
+      renderPicks();
+    } catch (error) {
+      // A failed load used to leave the list permanently blank, which reads
+      // exactly like "there is nothing to pack" — the one thing it must not
+      // say when it does not know.
+      summary.textContent = 'could not load';
+      results.replaceChildren(
+        h('div.pick__empty', null,
+          h('b', null, 'Could not load the list'),
+          h('p.muted', null, error.message),
+          h('button.btn', { type: 'button', onClick: () => load() }, 'Try again'),
+        ),
+      );
+    }
   }
 
   const pickPanel = packing

@@ -65,7 +65,8 @@ if (!skipSheet) {
 
 const payload = buildPayload(crop, base ?? BASE_URL);
 const layout = layoutFor(sheet, measure(payload));
-const cropName = base ? 'label-on-box-lan' : 'label-on-box';
+const cropName =
+  arg('out', null) ?? (base ? 'label-on-box-lan' : 'label-on-box');
 const SCALE = 14; // px per mm — about 4× life size on a typical screen
 
 const html = `<!doctype html><meta charset="utf-8"><title>${crop}</title>

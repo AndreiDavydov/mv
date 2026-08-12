@@ -17,7 +17,7 @@ export const BASE = `http://localhost:${PORT}`;
  * decode loop, the cooldown — rather than a function called directly.
  */
 export async function fakeCameraFile(png, name) {
-  const out = join(root, 'test/e2e/.media', `${name}.y4m`);
+  const out = join(root, 'test/live/.media', `${name}.y4m`);
   await mkdir(dirname(out), { recursive: true });
 
   // Regenerating takes a second, so the file is cached — but only while it is
@@ -81,6 +81,9 @@ export async function launch({ cameraFile, headless = true } = {}) {
 /** A page with the app booted and a clean database. */
 export async function openApp(browser, { hash = '' } = {}) {
   const page = await browser.newPage();
+  // Every wait is a network round trip against a hosted database; puppeteer's
+  // 30s default is impatience, not a signal.
+  page.setDefaultTimeout(60_000);
   page.on('pageerror', (error) => console.error('[page error]', error.message));
   page.on('console', (msg) => msg.type() === 'error' && console.error('[console]', msg.text()));
 
@@ -89,20 +92,48 @@ export async function openApp(browser, { hash = '' } = {}) {
   return page;
 }
 
-export async function resetDatabase(page) {
-  await page.evaluate(async () => {
+/**
+ * The catalog is shared and live, so tests can never wipe it. Each file owns a
+ * block of reserved ids at the end of the space and clears only those, plus the
+ * device-local session.
+ */
+export async function resetDatabase(page, prefix) {
+  if (!prefix) throw new Error('resetDatabase needs a reserved id prefix, e.g. ZZ4');
+
+  // The history is append-only and shared — it cannot be wiped, and reusing a
+  // reserved id means yesterday's events are still attached to it. Remember
+  // where the log had reached so assertions can ignore everything before.
+  page.__watermark = await page.evaluate(async () => {
+    const { data } = await globalThis.app.catalog.raw
+      .from('events').select('id').order('id', { ascending: false }).limit(1);
+    return data?.[0]?.id ?? 0;
+  });
+
+  await page.evaluate(async (p) => {
     const db = globalThis.app.catalog.raw;
-    const tx = db.transaction(['things', 'events', 'session', 'meta'], 'readwrite');
-    await Promise.all([
-      tx.objectStore('things').clear(),
-      tx.objectStore('events').clear(),
-      tx.objectStore('session').clear(),
-      tx.objectStore('meta').clear(),
-    ]);
-    await tx.done;
+    await db.from('things').update({ parent_id: null }).like('id', `${p}%`);
+    await db.from('things').delete().like('id', `${p}%`);
+    localStorage.removeItem('catalog.session');
     location.hash = '#/scan';
     await globalThis.app.refresh();
-  });
+  }, prefix);
+}
+
+/** Only the rows this test owns — the catalog has other people's work in it. */
+export async function reserved(page, prefix) {
+  return page.evaluate(async (p) => {
+    const all = await globalThis.app.catalog.all();
+    return all.filter((t) => t.id.startsWith(p))
+      .map(({ photo, thumb, ...rest }) => ({ ...rest, has_photo: Boolean(photo) }));
+  }, prefix);
+}
+
+/** Event types this test produced for one thing, oldest first. */
+export async function historyOf(page, id) {
+  return page.evaluate(async (thingId, since) => {
+    const events = await globalThis.app.catalog.events({ thingId });
+    return events.filter((e) => e.id > since).map((e) => e.type);
+  }, id, page.__watermark ?? 0);
 }
 
 /** Feed a code through the same pipeline the camera uses. */
@@ -111,21 +142,8 @@ export async function scan(page, text) {
   await settle(page);
 }
 
-export async function state(page) {
-  return page.evaluate(async () => {
-    const { catalog } = globalThis.app;
-    const [things, events, session] = await Promise.all([
-      catalog.all(),
-      catalog.events(),
-      catalog.session(),
-    ]);
-    return {
-      things: things.map(({ photo, thumb, ...rest }) => ({ ...rest, has_photo: Boolean(photo) })),
-      events: events.map(({ payload, ...rest }) => ({ ...rest, group: payload?.group ?? null })),
-      session,
-      hash: location.hash,
-    };
-  });
+export async function session(page) {
+  return page.evaluate(() => globalThis.app.session);
 }
 
 export const settle = (page) => page.evaluate(() => new Promise((r) => setTimeout(r, 60)));

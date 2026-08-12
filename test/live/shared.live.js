@@ -1,6 +1,6 @@
 import test, { after, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { BASE, launch, startServer } from '../e2e/harness.mjs';
+import { BASE, launch, startServer } from './harness.mjs';
 import { RemoteCatalog } from '../../app/src/core/remote.js';
 
 /**
@@ -33,6 +33,7 @@ before(async () => {
 async function openIsolated() {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
+  page.setDefaultTimeout(60_000);
   page.on('pageerror', (error) => console.error('[page error]', error.message));
   await page.goto(`${BASE}/app/`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => globalThis.app?.catalog, { timeout: 20_000 });
@@ -65,13 +66,13 @@ test('a scan on one device appears on the other without a reload', async () => {
   // The phone enrols, exactly as the stock-camera deep link does.
   await phone.evaluate(() => (location.hash = '#ZZ32'));
   await phone.waitForSelector('.view--enroll', { timeout: 15_000 });
-  await phone.type('.enroll__form .field__input', 'Cast iron pan');
+  await phone.type('.enroll__form .field__input', 'Phone wrote this');
   await phone.click('.enroll__actions .btn--primary');
   await phone.waitForFunction(() => location.hash === '#ZZ32', { timeout: 15_000 });
 
   // Nobody touches the laptop. Realtime has to do the work.
   await laptop.waitForFunction(
-    () => document.body.textContent.includes('Cast iron pan'),
+    () => document.body.textContent.includes('Phone wrote this'),
     { timeout: 20_000, polling: 300 },
   );
 

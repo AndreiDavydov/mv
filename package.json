@@ -3,18 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "QR home inventory & packing catalog — label generator + offline PWA",
+  "description": "QR home inventory & packing catalog \u2014 label generator + offline PWA",
   "scripts": {
     "vendor": "node tools/vendor.mjs",
     "test": "node --test \"test/**/*.test.js\"",
     "test:watch": "node --test --watch \"test/**/*.test.js\"",
     "serve": "node tools/serve.mjs",
     "proofs": "node tools/proofs.mjs",
-    "test:e2e": "node --test \"test/e2e/*.e2e.js\"",
     "shots": "node tools/shots.mjs",
     "demo": "node tools/demo.mjs",
-    "test:all": "npm test && npm run test:e2e",
-    "test:live": "node --test --test-concurrency=1 \"test/live/*.live.js\""
+    "test:all": "npm test && npm run test:live",
+    "test:live": "node --test --test-concurrency=1 --test-timeout=90000 \"test/live/*.live.js\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
