@@ -182,7 +182,7 @@ opens with the code free.
 already printed, it is only changing meaning. The generator needs to know nothing.
 
 **Requires** `supabase/migration-002-integrity.sql` and
-`supabase/migration-003-retire-code.sql`.
+`supabase/migration-003-rules.sql`.
 
 The rename lives in a `SECURITY DEFINER` function rather than in the client. The
 event log is append-only by policy — clients may select and insert, nothing else

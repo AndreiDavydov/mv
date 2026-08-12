@@ -106,6 +106,20 @@ URL and start working. The anon key is a shared password inside a public site.
 For a house move that is the right trade; `supabase/schema.sql` documents the
 one-line change to require sign-in instead.
 
+## Database migrations
+
+Run in order, in the Supabase SQL editor. All are idempotent and repair rows
+already in a bad state, so re-running one is harmless.
+
+| file | what it does |
+|---|---|
+| `supabase/schema.sql` | the tables, the cycle guard, realtime, access rules, the photo bucket |
+| `supabase/migration-002-integrity.sql` | `packed ⟺ in a box`; retired-label ids; contents follow a rename |
+| `supabase/migration-003-rules.sql` | only an open container can contain; deleting a box releases it; the one function allowed to touch the append-only log |
+
+The live tests skip themselves by name when a migration is missing, rather than
+failing or — worse — passing.
+
 ## Layout
 
 ```

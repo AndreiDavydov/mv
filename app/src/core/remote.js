@@ -296,7 +296,7 @@ export class RemoteCatalog {
     const { data, error } = await this.#db.rpc('retire_code', { code });
     if (error) {
       throw /function .* does not exist/i.test(error.message)
-        ? new Error('needs supabase/migration-003-retire-code.sql')
+        ? new Error('needs supabase/migration-003-rules.sql')
         : wrap(error, 'could not free the label');
     }
 

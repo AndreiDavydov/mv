@@ -171,7 +171,7 @@ test('emptying a crate releases the box inside it, contents intact', async () =>
 
 test('a label can be moved to another thing, and the old record survives', async (t) => {
   if (!(await migrationApplied())) {
-    t.skip('needs supabase/migration-003-retire-code.sql');
+    t.skip('needs supabase/migration-003-rules.sql');
     return;
   }
 
@@ -200,7 +200,7 @@ test('a label can be moved to another thing, and the old record survives', async
 
 test('a label can be reused more than once', async (t) => {
   if (!(await migrationApplied())) {
-    t.skip('needs supabase/migration-003-retire-code.sql');
+    t.skip('needs supabase/migration-003-rules.sql');
     return;
   }
 
@@ -217,7 +217,7 @@ test('a label can be reused more than once', async (t) => {
 
 test('a retired record cannot have its label moved again', async (t) => {
   if (!(await migrationApplied())) {
-    t.skip('needs supabase/migration-003-retire-code.sql');
+    t.skip('needs supabase/migration-003-rules.sql');
     return;
   }
 
@@ -245,7 +245,7 @@ async function containmentEnforced() {
 
 test('nothing can be packed into something that is not a container', async (t) => {
   if (!(await containmentEnforced())) {
-    t.skip('needs supabase/migration-004-containment.sql');
+    t.skip('needs supabase/migration-003-rules.sql');
     return;
   }
   await catalog.enroll({ id: X, name: 'A plain item' });
@@ -256,7 +256,7 @@ test('nothing can be packed into something that is not a container', async (t) =
 
 test('nothing can be packed into a container that is gone', async (t) => {
   if (!(await containmentEnforced())) {
-    t.skip('needs supabase/migration-004-containment.sql');
+    t.skip('needs supabase/migration-003-rules.sql');
     return;
   }
   await catalog.enroll({ id: BOX, name: 'Box', is_container: true });
@@ -269,7 +269,7 @@ test('nothing can be packed into a container that is gone', async (t) => {
 
 test('an item cannot carry a container kind', async (t) => {
   if (!(await containmentEnforced())) {
-    t.skip('needs supabase/migration-004-containment.sql');
+    t.skip('needs supabase/migration-003-rules.sql');
     return;
   }
   const { error } = await raw().from('things')
@@ -279,7 +279,7 @@ test('an item cannot carry a container kind', async (t) => {
 
 test('deleting a container releases what is in it rather than failing', async (t) => {
   if (!(await containmentEnforced())) {
-    t.skip('needs supabase/migration-004-containment.sql');
+    t.skip('needs supabase/migration-003-rules.sql');
     return;
   }
   // This is the path undo takes when reversing the enrolment of a container
