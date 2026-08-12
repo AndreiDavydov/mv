@@ -277,23 +277,58 @@ test('an item cannot carry a container kind', async (t) => {
   assert.ok(error);
 });
 
-test('deleting a container releases what is in it rather than failing', async (t) => {
+test('a container cannot be deleted out from under its contents', async (t) => {
   if (!(await containmentEnforced())) {
     t.skip('needs supabase/migration-003-rules.sql');
     return;
   }
-  // This is the path undo takes when reversing the enrolment of a container
-  // somebody has since packed into.
+  // The database will not orphan things to make a delete convenient. Whoever
+  // is deleting has to decide where the contents go — `markGone` releases
+  // them, and so does undo of an enrolment.
   await catalog.enroll({ id: BOX, name: 'Box', is_container: true });
   await catalog.enroll({ id: X, name: 'Pan' });
   await catalog.packInto(X, BOX);
 
   const { error } = await raw().from('things').delete().eq('id', BOX);
-  assert.ok(!error, `deleting the box failed: ${error?.message}`);
+  assert.ok(error, 'deleting the box alone should be refused');
+  assert.ok(await catalog.get(BOX), 'and nothing half-deleted');
+  assert.equal((await catalog.get(X)).parent_id, BOX);
+});
 
-  const freed = await catalog.get(X);
-  assert.equal(freed.parent_id, null, 'its contents came out');
-  assert.equal(freed.status, 'unpacked');
+test('a container and its contents can be deleted together', async (t) => {
+  if (!(await containmentEnforced())) {
+    t.skip('needs supabase/migration-003-rules.sql');
+    return;
+  }
+  // The foreign key is checked at the end of the statement, not per row — this
+  // is the bulk path the import uses, and a per-row trigger broke it.
+  await catalog.enroll({ id: BOX, name: 'Box', is_container: true });
+  await catalog.enroll({ id: X, name: 'Pan' });
+  await catalog.packInto(X, BOX);
+
+  const { error } = await raw().from('things').delete().like('id', `${P}%`);
+  assert.ok(!error, `bulk delete failed: ${error?.message}`);
+  assert.equal(await catalog.get(BOX), undefined);
+  assert.equal(await catalog.get(X), undefined);
+});
+
+test('undoing the enrolment of a full box releases its contents first', async (t) => {
+  if (!(await containmentEnforced())) {
+    t.skip('needs supabase/migration-003-rules.sql');
+    return;
+  }
+  await catalog.enroll({ id: BOX, name: 'Box', is_container: true });
+  const boxEnrolment = catalog.lastGroup;
+  await catalog.enroll({ id: X, name: 'Pan' });
+  await catalog.packInto(X, BOX);
+
+  assert.ok(await catalog.undoGroup(boxEnrolment), 'the undo should go through');
+  assert.equal(await catalog.get(BOX), undefined, 'the box is gone');
+
+  const pan = await catalog.get(X);
+  assert.ok(pan, 'the pan survives');
+  assert.equal(pan.parent_id, null);
+  assert.equal(pan.status, 'unpacked');
 });
 
 test('packed and loose still cannot disagree', async () => {

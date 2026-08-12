@@ -11,8 +11,8 @@ reason.
 ```bash
 npm install
 npm run vendor          # bundles the npm deps into /vendor (output is committed)
-npm test                # 83 unit tests — pure rules, no browser, no network
-npm run test:live       # 38 tests against the real Supabase project, including
+npm test                # 108 unit tests — pure rules, no browser, no network
+npm run test:live       # 59 tests against the real Supabase project, including
                         #   two isolated browsers proving one sees the other's scan
 npm run serve           # http://localhost:8087/labels/  and  /app/
 ```
@@ -63,8 +63,8 @@ tests only.
 | script | what it does |
 |---|---|
 | `npm run vendor` | bundle `qrcode`, `jsqr`, `fflate`, `supabase-js` into `/vendor` as plain ESM |
-| `npm test` | unit tests — pure rules, no browser, no network (83, ~1s) |
-| `npm run test:live` | everything that needs the database, browsers included (38, ~4min) |
+| `npm test` | unit tests — pure rules, no browser, no network (108, ~0.2s) |
+| `npm run test:live` | everything that needs the database, browsers included (59, ~2min) |
 | `npm run test:all` | both |
 | `npm run serve [port]` | static dev server; `localhost` is a secure context, so `getUserMedia` and service workers behave as on Pages |
 | `npm run proofs` | full-scale A4 sheet PDF + a single label rendered on a box |
@@ -115,7 +115,8 @@ already in a bad state, so re-running one is harmless.
 |---|---|
 | `supabase/schema.sql` | the tables, the cycle guard, realtime, access rules, the photo bucket |
 | `supabase/migration-002-integrity.sql` | `packed ⟺ in a box`; retired-label ids; contents follow a rename |
-| `supabase/migration-003-rules.sql` | only an open container can contain; deleting a box releases it; the one function allowed to touch the append-only log |
+| `supabase/migration-003-rules.sql` | only an open container can contain; a kind belongs to a container; the one function allowed to touch the append-only log |
+| `supabase/migration-004-delete-fix.sql` | a box may be deleted *with* its contents, never out from under them |
 
 The live tests skip themselves by name when a migration is missing, rather than
 failing or — worse — passing.
