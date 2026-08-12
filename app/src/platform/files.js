@@ -93,15 +93,17 @@ export async function readBundle(file) {
  * Replace the shared catalog with an imported bundle.
  *
  * This affects everybody, not just this browser — the caller is responsible for
- * making that clear before calling. Parents are cleared on the first pass and
- * restored on the second, so the rows can go in without tripping the foreign
- * key on a container that has not been inserted yet.
+ * making that clear before calling. Rows go in loose on the first pass and are
+ * put back into their boxes on the second, because a container has to exist
+ * before anything can point at it.
  */
 export async function restore(catalog, bundle) {
   const db = catalog.raw;
 
   await db.from('events').delete().neq('id', -1);
-  await db.from('things').update({ parent_id: null }).neq('id', '');
+  // One statement: the foreign key is checked at the end of it, so a box and
+  // its contents can go together. Setting parent_id alone would leave a row
+  // saying `packed` with nothing to be packed in, which the database refuses.
   await db.from('things').delete().neq('id', '');
 
   const rows = bundle.things.map((thing) => ({
@@ -113,7 +115,10 @@ export async function restore(catalog, bundle) {
     tags: thing.tags ?? [],
     room: thing.room,
     notes: thing.notes,
-    status: thing.status,
+    // Containment goes on in a second pass, so nothing may claim to be packed
+    // yet — `packed` without a parent is a state the database refuses. `gone`
+    // survives the first pass because a gone thing is never in a box anyway.
+    status: thing.parent_id ? 'unpacked' : thing.status,
   }));
 
   const { error: insertError } = await db.from('things').insert(rows);
@@ -121,7 +126,10 @@ export async function restore(catalog, bundle) {
 
   // Second pass: now that every row exists, put the containment back.
   for (const thing of bundle.things.filter((t) => t.parent_id)) {
-    await db.from('things').update({ parent_id: thing.parent_id }).eq('id', thing.id);
+    const { error } = await db.from('things')
+      .update({ parent_id: thing.parent_id, status: 'packed' })
+      .eq('id', thing.id);
+    if (error) throw new Error(`restored, but ${thing.id} could not go back in its box: ${error.message}`);
   }
 
   if (bundle.events.length) {

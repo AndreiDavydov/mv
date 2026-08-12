@@ -111,7 +111,7 @@ export async function resetDatabase(page, prefix) {
 
   await page.evaluate(async (p) => {
     const db = globalThis.app.catalog.raw;
-    await db.from('things').update({ parent_id: null }).like('id', `${p}%`);
+    await db.from('things').update({ parent_id: null, status: 'unpacked' }).like('id', `${p}%`);
     await db.from('things').delete().like('id', `${p}%`);
     localStorage.removeItem('catalog.session');
     location.hash = '#/scan';

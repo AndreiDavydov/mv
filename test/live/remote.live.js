@@ -48,7 +48,7 @@ async function recent(thingId) {
 async function wipeReserved() {
   const db = catalog.raw;
   // Detach first: a container cannot be deleted while something points at it.
-  await db.from('things').update({ parent_id: null }).like('id', 'ZZ2%');
+  await db.from('things').update({ parent_id: null, status: 'unpacked' }).like('id', 'ZZ2%');
   await db.from('things').delete().like('id', 'ZZ2%');
 }
 

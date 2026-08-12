@@ -344,6 +344,16 @@ export class RemoteCatalog {
 
     for (const event of members) {
       if (event.type === 'enrolled') {
+        // Undoing an enrolment removes the row. Anything inside it has to be
+        // let go first, or the delete is refused — rightly, because the
+        // database will not orphan things to make a delete convenient.
+        const children = await this.childrenOf(event.thing_id);
+        for (const child of children) {
+          await this.#db.from('things')
+            .update({ parent_id: null, status: 'unpacked' })
+            .eq('id', child.id);
+        }
+
         const { error: deleteError } = await this.#db.from('things').delete().eq('id', event.thing_id);
         if (deleteError) throw wrap(deleteError, 'could not undo the enrolment');
         written.push({

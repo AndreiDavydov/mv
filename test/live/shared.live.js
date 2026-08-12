@@ -52,7 +52,7 @@ beforeEach(() => wipe());
 /** Each live file owns a block of reserved ids, so two files cannot collide. */
 async function wipe() {
   const db = catalog.raw;
-  await db.from('things').update({ parent_id: null }).like('id', 'ZZ3%');
+  await db.from('things').update({ parent_id: null, status: 'unpacked' }).like('id', 'ZZ3%');
   await db.from('things').delete().like('id', 'ZZ3%');
 }
 
