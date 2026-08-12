@@ -1,4 +1,5 @@
-import { isValidId } from '../../../shared/ids.js';
+import { ID_ALPHABET, ID_LENGTH } from '../../../config.js';
+import { isValidId, normalizeId } from '../../../shared/ids.js';
 
 /**
  * What a thing can do, in one place.
@@ -142,6 +143,29 @@ export function assertCan(action, thing, context) {
  */
 export function hasLiveLabel(thing) {
   return isValidId(thing?.id ?? '');
+}
+
+const RETIRED_RE = new RegExp(`^[${ID_ALPHABET}]{${ID_LENGTH}}-[0-9]{1,3}$`);
+
+/**
+ * A record's identity, which is *not* the same thing as a label code.
+ *
+ * `normalizeId` exists to repair a code somebody read off a scuffed sticker, so
+ * it strips separators — which quietly turned `K7M3-1` into `K7M31` and made
+ * every retired record unreadable. Anything that identifies a stored row goes
+ * through here; anything that came off a camera or a keypad still goes through
+ * `normalizeId`, because a retired form is not scannable.
+ */
+export function normalizeThingId(raw) {
+  const text = String(raw ?? '').trim().toUpperCase();
+  const retired = /^(.+?)(-[0-9]{1,3})$/.exec(text);
+  if (!retired) return normalizeId(text);
+  const code = normalizeId(retired[1]);
+  return isValidId(code) ? `${code}${retired[2]}` : '';
+}
+
+export function isValidThingId(id) {
+  return isValidId(id) || RETIRED_RE.test(id);
 }
 
 /** `K7M3-1` → `K7M3`. The label this record used to carry. */

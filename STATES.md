@@ -181,7 +181,14 @@ opens with the code free.
 **Interaction with the label sheets.** `printed_up_to` does not move: the code was
 already printed, it is only changing meaning. The generator needs to know nothing.
 
-**Requires** `supabase/migration-002-integrity.sql`.
+**Requires** `supabase/migration-002-integrity.sql` and
+`supabase/migration-003-retire-code.sql`.
+
+The rename lives in a `SECURITY DEFINER` function rather than in the client. The
+event log is append-only by policy — clients may select and insert, nothing else
+— but retiring a record has to carry its events across, or the record arrives at
+its new id with no past. Relaxing the policy would hand every client the ability
+to edit history; one function that does exactly this and nothing else does not.
 
 ## 6. Status
 

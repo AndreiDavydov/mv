@@ -2,7 +2,7 @@ import { createClient } from '../../../vendor/supabase.js';
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from '../../../config.js';
 import { isValidId, normalizeId } from '../../../shared/ids.js';
 import { DEFAULT_SESSION, eventTypeFor, pick, pickUndoGroup, summary } from './model.js';
-import { assertCan, hasLiveLabel, retiredCode } from './capabilities.js';
+import { assertCan, isValidThingId, normalizeThingId, retiredCode } from './capabilities.js';
 
 /**
  * The shared catalog, backed by Postgres.
@@ -96,8 +96,8 @@ export class RemoteCatalog {
   // ── reads ────────────────────────────────────────────────────────────────
 
   async get(id) {
-    const key = normalizeId(id);
-    if (!isValidId(key)) return undefined;
+    const key = normalizeThingId(id);
+    if (!isValidThingId(key)) return undefined;
     const { data, error } = await this.#db.from('things').select('*').eq('id', key).maybeSingle();
     if (error) throw wrap(error, `could not read ${key}`);
     return data ? fromRow(data) : undefined;
@@ -119,7 +119,7 @@ export class RemoteCatalog {
     const { data, error } = await this.#db
       .from('things')
       .select('*')
-      .eq('parent_id', normalizeId(id))
+      .eq('parent_id', normalizeThingId(id))
       .order('updated_at', { ascending: false });
     if (error) throw wrap(error, 'could not read the contents');
     return data.map(fromRow);
@@ -139,7 +139,7 @@ export class RemoteCatalog {
 
   async events({ thingId } = {}) {
     let query = this.#db.from('events').select('*').order('id', { ascending: true });
-    if (thingId) query = query.eq('thing_id', normalizeId(thingId));
+    if (thingId) query = query.eq('thing_id', normalizeThingId(thingId));
     const { data, error } = await query;
     if (error) throw wrap(error, 'could not load the history');
     return data.map(fromEventRow);
@@ -195,8 +195,8 @@ export class RemoteCatalog {
   }
 
   async packInto(id, parentId) {
-    const thingId = normalizeId(id);
-    const target = normalizeId(parentId);
+    const thingId = normalizeThingId(id);
+    const target = normalizeThingId(parentId);
     if (thingId === target) throw new Error('a container cannot contain itself');
 
     const thing = await this.get(thingId);
@@ -229,7 +229,7 @@ export class RemoteCatalog {
    * all one group, so a single undo puts the box back and everything into it.
    */
   async markGone(id) {
-    const thingId = normalizeId(id);
+    const thingId = normalizeThingId(id);
     const thing = await this.get(thingId);
     if (!thing) throw new Error(`${thingId} is not enrolled`);
 
@@ -250,7 +250,7 @@ export class RemoteCatalog {
   /** Bring a gone thing back. It returns loose, never to wherever it used to be. */
   async restore(id) {
     const thing = await this.get(id);
-    if (!thing) throw new Error(`${normalizeId(id)} is not enrolled`);
+    if (!thing) throw new Error(`${normalizeThingId(id)} is not enrolled`);
     assertCan('restore', thing);
     return this.update(id, { status: 'unpacked', parent_id: null }, { type: 'restored' });
   }
@@ -260,7 +260,7 @@ export class RemoteCatalog {
    * move, when a box is opened at the far end and emptied.
    */
   async emptyContainer(id) {
-    const thingId = normalizeId(id);
+    const thingId = normalizeThingId(id);
     const thing = await this.get(thingId);
     if (!thing) throw new Error(`${thingId} is not enrolled`);
 
@@ -285,30 +285,22 @@ export class RemoteCatalog {
    * @returns {Promise<{freed: string, retired: string}>}
    */
   async recode(id) {
-    const code = normalizeId(id);
+    const code = normalizeThingId(id);
     const thing = await this.get(code);
     if (!thing) throw new Error(`${code} is not enrolled`);
     assertCan('recode', thing);
 
-    const { data: existing } = await this.#db.from('things').select('id').like('id', `${code}-%`);
-    const retired = retiredCode(code, (existing ?? []).map((r) => r.id));
+    // One transaction in the database. Doing it from here would need two
+    // writes, and the second — carrying the events across — is not something a
+    // client is allowed to do, because the log is append-only by policy.
+    const { data, error } = await this.#db.rpc('retire_code', { code });
+    if (error) {
+      throw /function .* does not exist/i.test(error.message)
+        ? new Error('needs supabase/migration-003-retire-code.sql')
+        : wrap(error, 'could not free the label');
+    }
 
-    // The self-reference cascades, so anything inside follows the box.
-    const { error } = await this.#db.from('things').update({ id: retired }).eq('id', code);
-    if (error) throw wrap(error, 'could not retire the old record');
-
-    // Events have no foreign key — the log has to outlive the rows it describes
-    // — so its references are moved by hand.
-    await this.#db.from('events').update({ thing_id: retired }).eq('thing_id', code);
-
-    await this.#log([{
-      thing_id: retired,
-      type: 'recoded',
-      parent_id: null,
-      payload: { group: this.#group(), before: { id: code }, after: { id: retired } },
-    }]);
-
-    return { freed: code, retired };
+    return { freed: code, retired: data };
   }
 
   /**
@@ -408,7 +400,7 @@ export class RemoteCatalog {
     const log = [];
 
     for (const { id, patch, type } of steps) {
-      const thingId = normalizeId(id);
+      const thingId = normalizeThingId(id);
       const current = await this.get(thingId);
       if (!current) throw new Error(`${thingId} is not enrolled`);
 

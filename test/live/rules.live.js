@@ -38,10 +38,9 @@ const ids = (rows) => rows.map((r) => r.id).sort();
 
 /** Some migrations only a human with the SQL editor can apply. */
 async function migrationApplied() {
-  const { error } = await catalog.raw.from('things').insert({ id: 'ZZ69-9', name: 'probe' });
-  if (error) return false;
-  await catalog.raw.from('things').delete().eq('id', 'ZZ69-9');
-  return true;
+  const { error } = await catalog.raw.rpc('retire_code', { code: 'ZZ69' });
+  // "not enrolled" means the function is there and did its checks.
+  return !error || /not enrolled/.test(error.message);
 }
 
 // ── no ghost containers ─────────────────────────────────────────────────────
@@ -172,7 +171,7 @@ test('emptying a crate releases the box inside it, contents intact', async () =>
 
 test('a label can be moved to another thing, and the old record survives', async (t) => {
   if (!(await migrationApplied())) {
-    t.skip('needs supabase/migration-002-integrity.sql');
+    t.skip('needs supabase/migration-003-retire-code.sql');
     return;
   }
 
@@ -201,7 +200,7 @@ test('a label can be moved to another thing, and the old record survives', async
 
 test('a label can be reused more than once', async (t) => {
   if (!(await migrationApplied())) {
-    t.skip('needs supabase/migration-002-integrity.sql');
+    t.skip('needs supabase/migration-003-retire-code.sql');
     return;
   }
 
@@ -218,7 +217,7 @@ test('a label can be reused more than once', async (t) => {
 
 test('a retired record cannot have its label moved again', async (t) => {
   if (!(await migrationApplied())) {
-    t.skip('needs supabase/migration-002-integrity.sql');
+    t.skip('needs supabase/migration-003-retire-code.sql');
     return;
   }
 

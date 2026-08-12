@@ -6,10 +6,13 @@ import {
   assertCan,
   can,
   hasLiveLabel,
+  isValidThingId,
+  normalizeThingId,
   originalCode,
   retiredCode,
 } from '../app/src/core/capabilities.js';
 import { normalize } from '../app/src/core/model.js';
+import { isValidId } from '../shared/ids.js';
 
 const item = (extra = {}) => normalize({ id: 'K7M3', name: 'Pan', ...extra });
 const box = (extra = {}) => normalize({ id: 'BXAA', name: 'Box A', is_container: true, ...extra });
@@ -155,4 +158,26 @@ test('assertCan throws the reason, so a rule cannot be enforced by a button alon
   assert.throws(() => assertCan('pack', gone(), { packingTarget: 'BXAA' }), /was marked gone/);
   assert.throws(() => assertCan('empty', box(), { childCount: 0 }), /already empty/);
   assert.doesNotThrow(() => assertCan('markGone', box(), { childCount: 2 }));
+});
+
+// ── record identity is not the same as a label code ─────────────────────────
+
+test('a retired id survives normalisation', () => {
+  // normalizeId strips separators to repair a code read off a scuffed sticker,
+  // which turned K7M3-1 into K7M31 and made every retired record unreadable.
+  assert.equal(normalizeThingId('K7M3-1'), 'K7M3-1');
+  assert.equal(normalizeThingId(' k7m3-2 '), 'K7M3-2');
+  assert.equal(normalizeThingId('K7M3'), 'K7M3');
+  assert.equal(normalizeThingId('k7-m3'), 'K7M3', 'a live code is still repaired');
+});
+
+test('both forms identify a record; only the live one is a label', () => {
+  assert.ok(isValidThingId('K7M3'));
+  assert.ok(isValidThingId('K7M3-1'));
+  assert.ok(!isValidThingId('K7M3-'));
+  assert.ok(!isValidThingId('K7M3-abc'));
+  assert.ok(!isValidThingId('NOPE-1'));
+
+  // A retired form must never resolve as something scanned.
+  assert.ok(!isValidId('K7M3-1'));
 });
