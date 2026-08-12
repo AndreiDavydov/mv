@@ -36,7 +36,21 @@ adding the UI back later is a few lines. Search should stop matching on it.
 
 Leaves `box`, `suitcase`, `crate`, `bag`. A shelf is not a thing you carry.
 
-## 5. Camera + text entry problems during scanning
+## 5. Reassigning a code to a different thing
+
+A label outlives its first use: a box gets emptied and refilled, a sticker goes
+on the wrong thing, a label is peeled off something sold. None of it is possible
+today — enrolling a code that exists fails with "already enrolled".
+
+Not a small fix: the code *is* the identity (`things.id` is the primary key and
+every event points at it). The correct model separates them — `thing_id` (uuid)
+as the key, `code` as a reassignable unique field — so the old thing keeps its
+history and photos and simply loses its label, which is exactly what happened to
+it physically.
+
+Full analysis and the recommended flow: [STATES.md §5](STATES.md).
+
+## 6. Camera + text entry problems during scanning
 
 Reported but not yet described: "a few problems when scanning with camera and
 adding text". Needs specifics before anything is changed — which screen, what
@@ -57,8 +71,23 @@ was expected, what happened.
   Neither is deletable with the anon key by design. Clear with
   `delete from public.events where thing_id = 'ZZZZ';` in the SQL editor.
 
-## 6. Gone items were invisible in the list — done
+## 7. Gone items were invisible in the list — done
 
 A thing marked gone read exactly like a tracked one. It is now struck through
 and tagged `gone` in the Catalog and in search results, and excluded from the
 packing pick-list.
+
+## 8. Gaps found by auditing the state space
+
+Enumerated in [STATES.md](STATES.md) — 27 containment configurations, 128 states
+once `gone` is included, and every route to every action. Four leaks, ranked:
+
+- **A gone container keeps its contents.** `Gone` clears the thing's own parent
+  but not its children, producing a struck-through box that still contains
+  things which still claim to be `packed`. Refuse while it is not empty.
+- **Packing silently resurrects a gone thing.** The pick-list hides them;
+  scanning does not, and `packInto` writes `packed` over `gone` without comment.
+  So the only way back from gone is an accident, and there is no deliberate one.
+- **No way to pack from an item's own page** — you must be holding it with the
+  camera open, or already packing the target box.
+- **A photo can only be taken during enrolment**, on a screen you see once.
