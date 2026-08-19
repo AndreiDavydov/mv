@@ -21,6 +21,9 @@ const el = {
   readout: $('readout'),
   qualityNotice: $('quality-notice'),
   offsetNotice: $('offset-notice'),
+  dx: $('dx'),
+  dy: $('dy'),
+  nudgeNotice: $('nudge-notice'),
   configNotice: $('config-notice'),
   previewSummary: $('preview-summary'),
   printedUpTo: $('printed-up-to'),
@@ -64,6 +67,10 @@ function readState() {
     testStrip: el.testStrip.checked,
     ecc: el.ecc.value,
     payloadFormat: el.payloadFormat.value,
+    // Every printer has its own idea of where the page starts. Calibration
+    // measures the drift; this is how you cancel it without editing source.
+    dx: clamp(Number(el.dx.value) || 0, -10, 10),
+    dy: clamp(Number(el.dy.value) || 0, -10, 10),
   };
 }
 
@@ -151,6 +158,16 @@ function renderNotices(state, layout) {
         )
       : '';
 
+  el.nudgeNotice.innerHTML =
+    state.dx || state.dy
+      ? notice(
+          'warn',
+          `Grid shifted ${fmtMm(state.dx)} right, ${fmtMm(state.dy)} down`,
+          'A nudge corrects one printer, not the sheet. It is not remembered — write it ' +
+            'down, and set it again next time you print from this machine.',
+        )
+      : '';
+
   const quality = {
     good: () =>
       notice(
@@ -185,15 +202,27 @@ function renderPages(state, layout) {
     el.previewSummary.textContent = '';
     return;
   }
+  // A calibration sheet is about the grid, not the content — it is worth
+  // printing with no labels on it at all, which is the cheapest way to find out
+  // whether this printer agrees with the die-cut.
   if (state.count === 0) {
-    el.pages.innerHTML = `<div class="empty">Set a count above zero.</div>`;
-    el.previewSummary.textContent = '';
+    if (!state.calibrate) {
+      el.pages.innerHTML = `<div class="empty">Set a count above zero.</div>`;
+      el.previewSummary.textContent = '';
+      return;
+    }
+    const page = document.createElement('div');
+    page.className = 'page calibrate';
+    page.innerHTML = calibrationOverlay(state.sheet, state);
+    el.pages.append(page);
+    el.previewSummary.textContent = 'calibration grid only — print on plain paper';
+    applyFit();
     return;
   }
 
   const { sheet } = state;
   const ids = idRange(state.start, state.count);
-  const slots = ids.map((id, i) => ({ id, position: positionOf(sheet, i + state.offset) }));
+  const slots = ids.map((id, i) => ({ id, position: nudged(positionOf(sheet, i + state.offset), state) }));
   const pageCount = Math.max(...slots.map((s) => s.position.sheet)) + 1;
 
   for (let p = 0; p < pageCount; p++) {
@@ -204,7 +233,7 @@ function renderPages(state, layout) {
         .filter((s) => s.position.sheet === p)
         .map((s) => labelHtml(s, sheet, layout, state))
         .join('') +
-      (state.calibrate ? calibrationOverlay(sheet) : '');
+      (state.calibrate ? calibrationOverlay(sheet, state) : '');
     el.pages.append(page);
   }
 
@@ -213,6 +242,11 @@ function renderPages(state, layout) {
     (state.testStrip ? ' · test strip' : '') +
     (state.calibrate ? ' · calibration' : '');
   applyFit();
+}
+
+/** Shift a position by the calibration nudge. */
+function nudged(position, state) {
+  return { ...position, x: position.x + state.dx, y: position.y + state.dy };
 }
 
 function labelHtml({ id, position }, sheet, layout, state) {
@@ -237,11 +271,11 @@ function labelHtml({ id, position }, sheet, layout, state) {
  * because the whole point is checking the grid, and a crosshair at each of the
  * four corners is what you actually line up against the die-cut.
  */
-function calibrationOverlay(sheet) {
+function calibrationOverlay(sheet, state) {
   const perSheet = sheet.columns * sheet.rows;
   let out = '';
   for (let i = 0; i < perSheet; i++) {
-    const { x, y } = positionOf(sheet, i);
+    const { x, y } = nudged(positionOf(sheet, i), state);
     out +=
       `<div class="cal-cell" style="left:${x}mm;top:${y}mm;` +
       `width:${sheet.label.width}mm;height:${sheet.label.height}mm"></div>`;
@@ -363,6 +397,7 @@ el.start.value = nextUnusedId();
  * Query parameters mirror the controls, so a calibration sheet or a test strip
  * is a bookmarkable URL rather than three clicks:
  *   ?calibrate=1  ?strip=1  ?start=K7M3  ?count=10  ?offset=3  ?ecc=L  ?payload=bare
+ *   ?dx=0.4  ?dy=-0.8   (calibration nudge, millimetres)
  */
 (function applyQuery() {
   const q = new URLSearchParams(location.search);
@@ -377,6 +412,8 @@ el.start.value = nextUnusedId();
   bind('offset', el.offset);
   bind('ecc', el.ecc, (v) => v.toUpperCase());
   bind('payload', el.payloadFormat, (v) => v.toLowerCase());
+  bind('dx', el.dx);
+  bind('dy', el.dy);
   bind('calibrate', el.calibrate);
   bind('strip', el.testStrip);
 })();
@@ -387,7 +424,8 @@ el.start.addEventListener('input', () => {
   el.start.setSelectionRange(caret, caret);
 });
 
-for (const control of [el.sheet, el.payloadFormat, el.ecc, el.start, el.count, el.offset, el.calibrate, el.testStrip]) {
+for (const control of [el.sheet, el.payloadFormat, el.ecc, el.start, el.count, el.offset,
+                       el.calibrate, el.testStrip, el.dx, el.dy]) {
   control.addEventListener('input', render);
   control.addEventListener('change', render);
 }
@@ -417,6 +455,7 @@ function escapeHtml(text) {
 }
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+const fmtMm = (n) => `${n > 0 ? '+' : ''}${n} mm`;
 const mm = (n) => (Math.round(n * 100) / 100).toFixed(2);
 
 renderCounter();

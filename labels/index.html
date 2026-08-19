@@ -79,6 +79,17 @@
         <input type="checkbox" id="test-strip">
         <span>Test strip — first row only</span>
       </label>
+      <div class="row">
+        <label>
+          <span>Nudge right (mm)</span>
+          <input type="number" id="dx" step="0.1" value="0">
+        </label>
+        <label>
+          <span>Nudge down (mm)</span>
+          <input type="number" id="dy" step="0.1" value="0">
+        </label>
+      </div>
+      <div id="nudge-notice"></div>
     </fieldset>
 
     <dl class="readout" id="readout"></dl>

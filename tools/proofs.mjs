@@ -41,6 +41,26 @@ const sheet = SHEETS['zweckform-3666'];
  */
 const base = arg('base', null);
 const skipSheet = process.argv.includes('--no-sheet');
+const dx = arg('dx', '0');
+const dy = arg('dy', '0');
+
+/**
+ * The calibration sheet goes on plain paper and gets held against a real label
+ * sheet at a window. It is the only way to find out whether this printer agrees
+ * with the die-cut before a sheet of stickers is spent finding out.
+ */
+const calibration = join(out, 'calibration.pdf');
+if (!skipSheet) {
+  await run(CHROME, [
+    '--headless', '--disable-gpu', '--no-pdf-header-footer',
+    '--virtual-time-budget=8000',
+    `--print-to-pdf=${calibration}`,
+    `http://localhost:${port}/labels/?calibrate=1&count=0&dx=${dx}&dy=${dy}`,
+  ]).catch((e) => {
+    throw new Error(`Chrome failed — is \`npm run serve ${port}\` running?\n${e.stderr ?? e}`);
+  });
+  console.log('proofs/calibration.pdf       PLAIN PAPER — hold it against a label sheet at a window');
+}
 
 await mkdir(out, { recursive: true });
 
@@ -53,7 +73,7 @@ if (!skipSheet) await run(CHROME, [
   '--no-pdf-header-footer',
   '--virtual-time-budget=8000',
   `--print-to-pdf=${pdf}`,
-  `http://localhost:${port}/labels/?start=${start}&count=${sheet.columns * sheet.rows}`,
+  `http://localhost:${port}/labels/?start=${start}&count=${sheet.columns * sheet.rows}&dx=${dx}&dy=${dy}`,
 ]).catch((e) => {
   throw new Error(`Chrome failed — is \`npm run serve ${port}\` running?\n${e.stderr ?? e}`);
 });
