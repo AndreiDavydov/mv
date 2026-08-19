@@ -5,6 +5,7 @@ import { measure, toSVG } from '../shared/qr-svg.js';
 import { DEFAULT_SHEET, SHEETS, layoutFor, positionOf, validateSheet } from './sheets.js';
 
 const PRINTED_KEY = 'labels.printed_up_to'; // count of IDs consumed, from index 0
+const GEOMETRY_KEY = 'labels.geometry';     // per-sheet measured overrides
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -29,7 +30,79 @@ const el = {
   printedUpTo: $('printed-up-to'),
   printedCount: $('printed-count'),
   countPresets: $('count-presets'),
+  geometry: $('geometry'),
+  geometryReadout: $('geometry-readout'),
+  g: {
+    columns: $('g-cols'),
+    rows: $('g-rows'),
+    labelWidth: $('g-lw'),
+    labelHeight: $('g-lh'),
+    marginLeft: $('g-ml'),
+    marginTop: $('g-mt'),
+    pitchX: $('g-px'),
+    pitchY: $('g-py'),
+  },
 };
+
+// ── sheet geometry ──────────────────────────────────────────────────────────
+// The nominal figures are Avery L7651. Other 38 × 21.2 sheets exist with the
+// same cell and a different grid, and a couple of millimetres of drift ruins
+// every label on the page. So the geometry is measured, not assumed — and
+// remembered, because it is a property of the paper rather than the printer.
+
+const GEOMETRY_FIELDS = [
+  ['columns', (s) => s.columns],
+  ['rows', (s) => s.rows],
+  ['labelWidth', (s) => s.label.width],
+  ['labelHeight', (s) => s.label.height],
+  ['marginLeft', (s) => s.margin.left],
+  ['marginTop', (s) => s.margin.top],
+  ['pitchX', (s) => s.pitch.x],
+  ['pitchY', (s) => s.pitch.y],
+];
+
+function savedGeometry(sheetId) {
+  try {
+    return JSON.parse(localStorage.getItem(GEOMETRY_KEY) ?? '{}')[sheetId] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function saveGeometry(sheetId, values) {
+  let all = {};
+  try {
+    all = JSON.parse(localStorage.getItem(GEOMETRY_KEY) ?? '{}');
+  } catch {
+    /* start fresh */
+  }
+  if (values) all[sheetId] = values;
+  else delete all[sheetId];
+  localStorage.setItem(GEOMETRY_KEY, JSON.stringify(all));
+}
+
+/** Apply measured overrides to a nominal sheet definition. */
+function withGeometry(sheet, values) {
+  if (!values) return sheet;
+  return {
+    ...sheet,
+    columns: values.columns,
+    rows: values.rows,
+    label: { width: values.labelWidth, height: values.labelHeight },
+    margin: { left: values.marginLeft, top: values.marginTop },
+    pitch: { x: values.pitchX, y: values.pitchY },
+  };
+}
+
+function readGeometryFields() {
+  const values = {};
+  for (const [key] of GEOMETRY_FIELDS) values[key] = Number(el.g[key].value);
+  return Object.values(values).every((v) => Number.isFinite(v) && v > 0) ? values : null;
+}
+
+function fillGeometryFields(sheet) {
+  for (const [key, read] of GEOMETRY_FIELDS) el.g[key].value = String(read(sheet));
+}
 
 // ── printed-up-to bookkeeping ───────────────────────────────────────────────
 // Duplicate IDs would silently corrupt the catalog: two boxes answering to the
@@ -52,7 +125,8 @@ function renderCounter() {
 // ── state ───────────────────────────────────────────────────────────────────
 
 function readState() {
-  const sheet = SHEETS[el.sheet.value] ?? SHEETS[DEFAULT_SHEET];
+  const nominal = SHEETS[el.sheet.value] ?? SHEETS[DEFAULT_SHEET];
+  const sheet = withGeometry(nominal, readGeometryFields());
   const start = normalizeId(el.start.value);
   const perSheet = sheet.columns * sheet.rows;
   const offset = clamp(Number(el.offset.value) || 0, 0, perSheet - 1);
@@ -87,6 +161,7 @@ function render() {
   const measured = measure(sample, { errorCorrectionLevel: state.ecc });
   const layout = layoutFor(state.sheet, measured);
 
+  renderGeometryReadout(state.sheet);
   renderReadout(state, layout, sample);
   renderNotices(state, layout);
   renderPages(state, layout);
@@ -123,6 +198,27 @@ function pathCaseProblem(baseUrl) {
   } catch {
     return null;
   }
+}
+
+/**
+ * The numbers a person can actually check against the sheet: the margins that
+ * fall out of the other measurements. On a real label sheet the left and right
+ * margins are equal, and so are top and bottom — if these two disagree, a
+ * measurement is wrong, and that is far easier to see here than on paper.
+ */
+function renderGeometryReadout(sheet) {
+  const right = sheet.page.width - (sheet.margin.left + (sheet.columns - 1) * sheet.pitch.x + sheet.label.width);
+  const bottom = sheet.page.height - (sheet.margin.top + (sheet.rows - 1) * sheet.pitch.y + sheet.label.height);
+  const symmetric = (a, b) => (Math.abs(a - b) < 0.5 ? 'good' : 'bad');
+
+  el.geometryReadout.innerHTML = [
+    ['Left / right margin', `${mm(sheet.margin.left)} / ${mm(right)} mm`, symmetric(sheet.margin.left, right)],
+    ['Top / bottom margin', `${mm(sheet.margin.top)} / ${mm(bottom)} mm`, symmetric(sheet.margin.top, bottom)],
+    ['Gap across / down', `${mm(sheet.pitch.x - sheet.label.width)} / ${mm(sheet.pitch.y - sheet.label.height)} mm`, ''],
+    ['Labels', `${sheet.columns} × ${sheet.rows} = ${sheet.columns * sheet.rows}`, ''],
+  ]
+    .map(([k, v, cls]) => `<dt>${k}</dt><dd class="${cls}">${escapeHtml(v)}</dd>`)
+    .join('');
 }
 
 function renderNotices(state, layout) {
@@ -429,6 +525,47 @@ for (const control of [el.sheet, el.payloadFormat, el.ecc, el.start, el.count, e
   control.addEventListener('input', render);
   control.addEventListener('change', render);
 }
+fillGeometryFields(withGeometry(SHEETS[DEFAULT_SHEET], savedGeometry(DEFAULT_SHEET)));
+if (savedGeometry(DEFAULT_SHEET)) el.geometry.open = true;
+
+for (const [key] of GEOMETRY_FIELDS) {
+  el.g[key].addEventListener('input', () => {
+    const values = readGeometryFields();
+    if (values) saveGeometry(el.sheet.value, values);
+    render();
+  });
+}
+
+/**
+ * A label sheet is symmetric: the margin at the top equals the one at the
+ * bottom, and left equals right. So the pitch is not an independent
+ * measurement — it follows from the margin, the cell size and the count. This
+ * turns the fiddliest thing to measure into arithmetic.
+ */
+$('g-solve').addEventListener('click', () => {
+  const sheet = SHEETS[el.sheet.value] ?? SHEETS[DEFAULT_SHEET];
+  const values = readGeometryFields();
+  if (!values) return;
+
+  if (values.columns > 1) {
+    values.pitchX = (sheet.page.width - 2 * values.marginLeft - values.labelWidth) / (values.columns - 1);
+  }
+  if (values.rows > 1) {
+    values.pitchY = (sheet.page.height - 2 * values.marginTop - values.labelHeight) / (values.rows - 1);
+  }
+  for (const [key] of GEOMETRY_FIELDS) {
+    el.g[key].value = String(Math.round(values[key] * 100) / 100);
+  }
+  saveGeometry(el.sheet.value, readGeometryFields());
+  render();
+});
+
+$('g-reset').addEventListener('click', () => {
+  saveGeometry(el.sheet.value, null);
+  fillGeometryFields(SHEETS[el.sheet.value] ?? SHEETS[DEFAULT_SHEET]);
+  render();
+});
+
 el.fit.addEventListener('change', applyFit);
 window.addEventListener('resize', applyFit);
 $('print').addEventListener('click', print);

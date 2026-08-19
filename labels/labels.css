@@ -323,3 +323,27 @@ button.chip { padding: 5px 10px; font-size: 12px; border-radius: 999px; }
   }
   .page:last-child { break-after: auto; }
 }
+
+/* ── sheet geometry ─────────────────────────────────────────────────────── */
+
+.geometry {
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.geometry > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.geometry[open] > summary { margin-bottom: 10px; }
+.geometry .row { margin-bottom: 8px; }
+.geometry__hint { margin: 0 0 10px; font-size: 12px; color: var(--muted); }
+.geometry .readout { background: var(--panel); margin-bottom: 10px; }
+.geometry button { width: 100%; }
+.readout dd.bad { color: var(--bad); font-weight: 600; }
+.readout dd.good { color: var(--good); }

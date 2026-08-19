@@ -92,6 +92,36 @@
       <div id="nudge-notice"></div>
     </fieldset>
 
+    <details class="geometry" id="geometry">
+      <summary>Sheet geometry — measure once, then never again</summary>
+      <p class="geometry__hint">
+        Every number is millimetres, measured on the label sheet itself. The
+        pitch is centre-to-centre; measure across all the rows and divide, it is
+        far more accurate than measuring one.
+      </p>
+      <div class="row">
+        <label><span>Columns</span><input type="number" id="g-cols" min="1" max="20" step="1"></label>
+        <label><span>Rows</span><input type="number" id="g-rows" min="1" max="40" step="1"></label>
+      </div>
+      <div class="row">
+        <label><span>Label width</span><input type="number" id="g-lw" step="0.1"></label>
+        <label><span>Label height</span><input type="number" id="g-lh" step="0.1"></label>
+      </div>
+      <div class="row">
+        <label><span>Left margin</span><input type="number" id="g-ml" step="0.1"></label>
+        <label><span>Top margin</span><input type="number" id="g-mt" step="0.1"></label>
+      </div>
+      <div class="row">
+        <label><span>Pitch across</span><input type="number" id="g-px" step="0.1"></label>
+        <label><span>Pitch down</span><input type="number" id="g-py" step="0.1"></label>
+      </div>
+      <dl class="readout" id="geometry-readout"></dl>
+      <div class="chips">
+        <button type="button" class="chip" id="g-solve">Solve pitch from margins</button>
+        <button type="button" class="chip" id="g-reset">Reset to Avery L7651</button>
+      </div>
+    </details>
+
     <dl class="readout" id="readout"></dl>
     <div id="quality-notice"></div>
 
