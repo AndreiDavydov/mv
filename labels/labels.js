@@ -392,7 +392,11 @@ function calibrationOverlay(sheet, state) {
   return (
     out +
     `<div class="ruler">${ticks}</div>` +
-    `<div class="ruler-caption">100 mm — measure it. Any other reading means the print dialog is scaling.</div>`
+    `<div class="ruler-caption">${
+      state.dx || state.dy
+        ? `NUDGE ${fmtMm(state.dx)} right, ${fmtMm(state.dy)} down &nbsp;·&nbsp; `
+        : 'NUDGE none &nbsp;·&nbsp; '
+    }100 mm — measure it. Any other reading means the print dialog is scaling.</div>`
   );
 }
 

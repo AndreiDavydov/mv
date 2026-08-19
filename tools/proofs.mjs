@@ -45,6 +45,34 @@ const dx = arg('dx', '0');
 const dy = arg('dy', '0');
 
 /**
+ * `--sweep` prints one calibration grid per candidate offset, each stamped with
+ * the nudge that produced it. Hold the stack against the label sheet, find the
+ * page that lines up, and the answer is written on it — one print run instead
+ * of a round trip per guess.
+ */
+if (process.argv.includes('--sweep')) {
+  await mkdir(out, { recursive: true });
+  const steps = (arg('steps', '0,-0.5,-1,-1.5,-2,-2.5,-3') ).split(',');
+  const pages = [];
+  for (const step of steps) {
+    const file = join(out, `.sweep-${step}.pdf`);
+    await run(CHROME, [
+      '--headless', '--disable-gpu', '--no-pdf-header-footer',
+      '--virtual-time-budget=8000',
+      `--print-to-pdf=${file}`,
+      `http://localhost:${port}/labels/?calibrate=1&count=0&dx=${dx}&dy=${step}`,
+    ]);
+    pages.push(file);
+  }
+  const sweep = join(out, 'calibration-sweep.pdf');
+  await run('pdfunite', [...pages, sweep]);
+  for (const file of pages) await rm(file);
+  console.log(`proofs/calibration-sweep.pdf  ${steps.length} pages, nudged ${steps.join(', ')} mm down`);
+  console.log('                              PLAIN PAPER. Find the page that lines up; it says which.');
+  process.exit(0);
+}
+
+/**
  * The calibration sheet goes on plain paper and gets held against a real label
  * sheet at a window. It is the only way to find out whether this printer agrees
  * with the die-cut before a sheet of stickers is spent finding out.
