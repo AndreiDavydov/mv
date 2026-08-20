@@ -66,6 +66,15 @@ const skipSheet = process.argv.includes('--no-sheet');
 const startIndex = indexFromId(start);
 const perSheet = sheet.columns * sheet.rows;
 
+/**
+ * `--sheets=N` puts N sheets in one PDF. One print job, N label sheets fed in
+ * a row — and, more to the point, one range recorded in the ledger instead of
+ * N chances to lose track of which sheets actually came out.
+ */
+const sheetCount = Math.max(1, Math.min(40, Number(arg('sheets', '1')) || 1));
+const total = perSheet * sheetCount;
+const lastCode = idFromIndex(startIndex + total - 1);
+
 // Refuse to reprint a code that is already on a sticker somewhere.
 if (!skipSheet && startIndex < book.printed && !process.argv.includes('--force')) {
   throw new Error(
@@ -126,28 +135,33 @@ await mkdir(out, { recursive: true });
 
 // ── 1. full-scale A4 sheet ──────────────────────────────────────────────────
 
-const pdf = join(out, `sheet-${start}.pdf`);
+const pdf = join(out, sheetCount === 1 ? `sheet-${start}.pdf` : `sheets-${start}-${lastCode}.pdf`);
 if (!skipSheet) await run(CHROME, [
   '--headless',
   '--disable-gpu',
   '--no-pdf-header-footer',
   '--virtual-time-budget=8000',
   `--print-to-pdf=${pdf}`,
-  `http://localhost:${port}/labels/?start=${start}&count=${sheet.columns * sheet.rows}&dx=${dx}&dy=${dy}`,
+  `http://localhost:${port}/labels/?start=${start}&count=${total}&dx=${dx}&dy=${dy}`,
 ]).catch((e) => {
   throw new Error(`Chrome failed — is \`npm run serve ${port}\` running?\n${e.stderr ?? e}`);
 });
 if (!skipSheet) {
-  console.log(`proofs/sheet-${start}.pdf        A4, ${perSheet} labels, ${start} onward — print at 100%, no scaling`);
+  const name = pdf.slice(pdf.lastIndexOf('/') + 1);
+  console.log(
+    `proofs/${name}` .padEnd(29) +
+      `${sheetCount} page${sheetCount === 1 ? '' : 's'}, ${total} labels, ${start} → ${lastCode}` +
+      ' — print at 100%, no scaling',
+  );
 
   if (process.argv.includes('--mark')) {
-    book.printed = Math.max(book.printed, startIndex + perSheet);
-    book.ranges.push({ start, end: idFromIndex(startIndex + perSheet - 1), at: new Date().toISOString() });
+    book.printed = Math.max(book.printed, startIndex + total);
+    book.ranges.push({ start, end: lastCode, at: new Date().toISOString() });
     await writeFile(LEDGER, JSON.stringify(book, null, 2) + '\n');
     console.log(`                             recorded as printed; next free is ${idFromIndex(book.printed)}`);
   } else {
-    console.log('                             NOT yet recorded. Once it has printed correctly, run:');
-    console.log(`                               npm run proofs -- --start=${start} --mark`);
+    console.log('                             NOT yet recorded. Once they have printed correctly, run:');
+    console.log(`                               npm run proofs -- --start=${start} --sheets=${sheetCount} --mark`);
   }
 }
 
