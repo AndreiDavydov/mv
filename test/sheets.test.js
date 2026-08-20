@@ -95,3 +95,33 @@ test('the SVG has no dark module inside the quiet zone', () => {
     assert.ok(x + width <= total - QUIET_MODULES, `run ends at ${x + width}, inside the quiet zone`);
   }
 });
+
+// ── measured against the physical sheet ─────────────────────────────────────
+
+test('the grid matches the sheet it was measured from', () => {
+  // From a 600 dpi scan with the four corner labels peeled off. The nominal
+  // Avery L7651 figures were wrong for this sheet: they assume 2.5 mm alleys
+  // between columns, and this one has none.
+  const s = SHEETS['zweckform-3666'];
+  const right = positionOf(s, 4).x + s.label.width;
+  const row13 = positionOf(s, 60);
+
+  assert.ok(Math.abs(right - 199.90) < 0.2, `col 5 ends at ${right}, scan says 199.90`);
+  assert.ok(Math.abs(row13.y - 265.09) < 0.2, `row 13 starts at ${row13.y}, scan says 265.09`);
+  assert.ok(Math.abs(row13.y + s.label.height - 286.26) < 0.2, 'row 13 should end at 286.26');
+});
+
+test('the sheet is symmetric, which is how a mistyped measurement shows up', () => {
+  const s = SHEETS['zweckform-3666'];
+  const right = s.page.width - (s.margin.left + (s.columns - 1) * s.pitch.x + s.label.width);
+  const bottom = s.page.height - (s.margin.top + (s.rows - 1) * s.pitch.y + s.label.height);
+
+  assert.ok(Math.abs(s.margin.left - right) < 0.1, `left ${s.margin.left} vs right ${right}`);
+  assert.ok(Math.abs(s.margin.top - bottom) < 0.1, `top ${s.margin.top} vs bottom ${bottom}`);
+});
+
+test('these labels butt together — no alley to lose the quiet zone into', () => {
+  const s = SHEETS['zweckform-3666'];
+  assert.equal(s.pitch.x - s.label.width, 0, 'no horizontal gap on this sheet');
+  assert.equal(s.pitch.y - s.label.height, 0, 'no vertical gap either');
+});

@@ -8,12 +8,27 @@
 export const SHEETS = {
   'zweckform-3666': {
     id: 'zweckform-3666',
-    name: 'Zweckform 3666 · Avery L7651',
-    note: '38.1 × 21.2 mm · 5 × 13 = 65 per sheet',
+    name: 'Avery QuickPEEL 38 × 21.2',
+    note: '38 × 21.2 mm · 5 × 13 = 65 per sheet · no gaps between labels',
     page: { width: 210, height: 297 },
-    label: { width: 38.1, height: 21.2 },
-    margin: { top: 10.7, left: 4.65 },
-    pitch: { x: 40.6, y: 21.2 },
+    /*
+     * Measured from a real sheet, not taken from a datasheet.
+     *
+     * The nominal Avery L7651 figures — 38.1 wide on a 40.6 pitch, 4.65 left
+     * margin — describe a sheet with 2.5 mm alleys between the columns. This
+     * one has none: the labels butt together at 38.0, which puts every column
+     * after the first in the wrong place and gets worse across the page.
+     *
+     * Confirmed three ways on a 600 dpi scan of the sheet with its four corner
+     * labels peeled off: the peel-tab arrows repeat every 38.07 mm, the tab
+     * text blocks every 76.06 (two columns), and the exposed top-right cell
+     * ends at 199.90 against 200.00 predicted here. The vertical figures were
+     * right already — the exposed bottom row measured 265.09 … 286.26 against
+     * 265.10 … 286.30 predicted.
+     */
+    label: { width: 38.0, height: 21.2 },
+    margin: { top: 10.7, left: 10.0 },
+    pitch: { x: 38.0, y: 21.2 },
     columns: 5,
     rows: 13,
     /** White kept clear of the die-cut edge, on every side of every label. */
