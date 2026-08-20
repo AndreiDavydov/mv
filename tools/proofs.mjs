@@ -7,13 +7,13 @@
  *
  *   npm run proofs               (needs `npm run serve` on :8087, or pass --port)
  */
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BASE_URL } from '../config.js';
-import { idRange } from '../shared/ids.js';
+import { idFromIndex, idRange, indexFromId } from '../shared/ids.js';
 import { buildPayload } from '../shared/payload.js';
 import { measure, toSVG } from '../shared/qr-svg.js';
 import { SHEETS, layoutFor } from '../labels/sheets.js';
@@ -29,7 +29,29 @@ const arg = (name, fallback) => {
 };
 
 const port = arg('port', '8087');
-const start = arg('start', '2222');
+
+/**
+ * Which codes have already gone onto paper.
+ *
+ * The labels page keeps this in the browser, but sheets generated here never
+ * touched the browser — so printing from the command line quietly bypassed the
+ * one thing standing between a move and two boxes answering to the same code.
+ * This is the same counter, kept in the repo where it is committed alongside
+ * everything else.
+ */
+const LEDGER = join(out, 'printed.json');
+
+async function ledger() {
+  try {
+    return JSON.parse(await readFile(LEDGER, 'utf8'));
+  } catch {
+    return { printed: 0, ranges: [] };
+  }
+}
+
+const book = await ledger();
+const nextFree = idFromIndex(book.printed);
+const start = arg('start', nextFree);
 const crop = arg('crop', 'K7M3');
 const sheet = SHEETS['zweckform-3666'];
 
@@ -41,6 +63,16 @@ const sheet = SHEETS['zweckform-3666'];
  */
 const base = arg('base', null);
 const skipSheet = process.argv.includes('--no-sheet');
+const startIndex = indexFromId(start);
+const perSheet = sheet.columns * sheet.rows;
+
+// Refuse to reprint a code that is already on a sticker somewhere.
+if (!skipSheet && startIndex < book.printed && !process.argv.includes('--force')) {
+  throw new Error(
+    `${start} is already printed — the ledger reaches ${idFromIndex(book.printed - 1)}. ` +
+      `Next free is ${nextFree}. Pass --start=${nextFree}, or --force if a sheet was wasted.`,
+  );
+}
 const dx = arg('dx', '0');
 const dy = arg('dy', '0');
 
@@ -106,7 +138,17 @@ if (!skipSheet) await run(CHROME, [
   throw new Error(`Chrome failed — is \`npm run serve ${port}\` running?\n${e.stderr ?? e}`);
 });
 if (!skipSheet) {
-  console.log(`proofs/sheet-${start}.pdf        A4, 65 labels, ${start} onward — print at 100%, no scaling`);
+  console.log(`proofs/sheet-${start}.pdf        A4, ${perSheet} labels, ${start} onward — print at 100%, no scaling`);
+
+  if (process.argv.includes('--mark')) {
+    book.printed = Math.max(book.printed, startIndex + perSheet);
+    book.ranges.push({ start, end: idFromIndex(startIndex + perSheet - 1), at: new Date().toISOString() });
+    await writeFile(LEDGER, JSON.stringify(book, null, 2) + '\n');
+    console.log(`                             recorded as printed; next free is ${idFromIndex(book.printed)}`);
+  } else {
+    console.log('                             NOT yet recorded. Once it has printed correctly, run:');
+    console.log(`                               npm run proofs -- --start=${start} --mark`);
+  }
 }
 
 // ── 2. one label, as if stuck on a box ──────────────────────────────────────
