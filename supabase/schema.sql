@@ -4,11 +4,14 @@
 -- Paste the whole file into the Supabase SQL editor and run it once.
 -- Safe to re-run: everything is IF NOT EXISTS / OR REPLACE.
 --
--- Access model: no accounts. Anyone with the site URL and the anon key can
--- read and write the catalog. That is deliberate — helpers should be able to
--- open a link and start scanning — but it does mean the anon key is a shared
--- password, and it ships inside a public static site. Do not put anything in
--- here you would mind a stranger reading. See NOTES at the bottom.
+-- Access model: one shared account. `anon` — the role a browser holding the
+-- public key gets — has no privilege on anything here, so a stranger who scans
+-- a box reaches a locked page with nothing behind it. Helpers sign in once per
+-- device with a password everyone shares. See NOTES at the bottom for the two
+-- dashboard settings that make this real.
+--
+-- An existing project that predates this gets there via migration-005-auth.sql,
+-- which also drops the old anon policies by name.
 -- ============================================================================
 
 -- ── things ──────────────────────────────────────────────────────────────────
@@ -120,19 +123,27 @@ end $$;
 alter table public.things enable row level security;
 alter table public.events enable row level security;
 
+-- Every policy names `authenticated` and only `authenticated`. RLS denies what
+-- it has not been told to allow, so leaving `anon` out of all of them is what
+-- closes the catalog — there is no deny rule to add and none to forget.
 drop policy if exists things_anon_all on public.things;
-create policy things_anon_all on public.things
-  for all to anon, authenticated using (true) with check (true);
+drop policy if exists things_crew_all on public.things;
+create policy things_crew_all on public.things
+  for all to authenticated using (true) with check (true);
 
 -- Insert and read only: the log is append-only, and the database enforces it
 -- rather than trusting every client to behave. Undo appends a reversal.
+-- No update policy and no delete policy is the point, not an omission — it
+-- means nobody with the shared password can erase what they did.
 drop policy if exists events_anon_read on public.events;
-create policy events_anon_read on public.events
-  for select to anon, authenticated using (true);
-
 drop policy if exists events_anon_insert on public.events;
-create policy events_anon_insert on public.events
-  for insert to anon, authenticated with check (true);
+drop policy if exists events_crew_read on public.events;
+drop policy if exists events_crew_insert on public.events;
+create policy events_crew_read on public.events
+  for select to authenticated using (true);
+
+create policy events_crew_insert on public.events
+  for insert to authenticated with check (true);
 
 -- ── photo storage ───────────────────────────────────────────────────────────
 
@@ -140,24 +151,33 @@ insert into storage.buckets (id, name, public)
 values ('photos', 'photos', true)
 on conflict (id) do update set public = true;
 
+-- The bucket stays public so <img src> works without a token that expires
+-- mid-session. What keeps photos private is that their paths are unguessable
+-- (`<ID>-<random>.jpg`) and the only record of them is the things row, which
+-- now needs a session to read. Uploading needs one too; there is deliberately
+-- no update or delete policy, so a photo can be superseded but never replaced
+-- in place or removed.
 drop policy if exists photos_anon_read on storage.objects;
-create policy photos_anon_read on storage.objects
-  for select to anon, authenticated using (bucket_id = 'photos');
-
 drop policy if exists photos_anon_write on storage.objects;
-create policy photos_anon_write on storage.objects
-  for insert to anon, authenticated with check (bucket_id = 'photos');
-
 drop policy if exists photos_anon_update on storage.objects;
-create policy photos_anon_update on storage.objects
-  for update to anon, authenticated using (bucket_id = 'photos');
+drop policy if exists photos_crew_write on storage.objects;
+create policy photos_crew_write on storage.objects
+  for insert to authenticated with check (bucket_id = 'photos');
 
 -- ============================================================================
 -- NOTES
 --
--- The anon key is a shared password baked into a public site. For a house move
--- among friends that is the right trade — a helper opens a link and works.
--- If that stops being acceptable, the smallest fix that keeps labels working
--- is to turn on Supabase Auth and change `to anon` to `to authenticated` in
--- every policy above; the app then asks for a magic-link sign-in once.
+-- Two things here are not SQL, and without them none of the above matters:
+--
+--   1. Authentication → Sign In / Providers → Email: turn OFF "Allow new users
+--      to sign up". Otherwise anyone holding the public key calls signUp(),
+--      becomes `authenticated`, and every policy above waves them through.
+--
+--   2. Authentication → Users → Add user: create the one crew account, with
+--      the address in CREW_EMAIL and Auto Confirm ticked. That address is a
+--      name, not a mailbox; nothing is ever sent to it.
+--
+-- Changing the password on that user is the whole revocation story: everyone
+-- re-enters it once. Nobody's individual work is lost, because who did what is
+-- recorded by name in the event log rather than by account.
 -- ============================================================================

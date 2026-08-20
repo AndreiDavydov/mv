@@ -11,7 +11,7 @@
  * http://localhost:8087/app/ — it is the same code path, no fake device.
  */
 import { join } from 'node:path';
-import { fakeCameraFile, launch, openApp, root, startServer } from '../test/e2e/harness.mjs';
+import { fakeCameraFile, launch, openApp, root, startServer } from '../test/live/harness.mjs';
 
 const auto = process.argv.includes('--auto');
 const label = process.argv.find((a) => a.startsWith('--label='))?.split('=')[1] ?? 'label-on-box.png';

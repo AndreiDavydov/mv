@@ -6,7 +6,7 @@
  */
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { launch, openApp, resetDatabase, root, startServer } from '../test/e2e/harness.mjs';
+import { launch, openApp, resetDatabase, root, startServer } from '../test/live/harness.mjs';
 
 const out = process.argv[2] ?? join(root, 'proofs/screens');
 await mkdir(out, { recursive: true });

@@ -64,6 +64,16 @@ export function backupView(app, { eventCount, thingCount, online }) {
     });
   }
 
+  function confirmLeave() {
+    askSheet({
+      title: 'Sign out of this device?',
+      detail: 'You will need the password again to get back in. Everyone else stays signed in, ' +
+        'and nothing in the catalog changes.',
+      confirmLabel: 'Sign out',
+      onConfirm: () => app.leave(),
+    });
+  }
+
   return h('section.view.view--list', null,
     h('div.section__head', null, h('h2', null, 'Catalog'),
       h('span.section__count', null, `${plural(thingCount, 'thing')} · ${plural(eventCount, 'event')}`)),
@@ -105,12 +115,23 @@ export function backupView(app, { eventCount, thingCount, online }) {
     ),
 
     h('div.card-block', null,
+      h('b', null, 'Signed in as ', app.helper ?? 'someone'),
+      h('p', null,
+        'Your name goes on everything you scan. The history cannot be edited or deleted by ' +
+        'anyone — the database only accepts new entries — so it stays a record of who did what.'),
+      h('div.enroll__actions', null,
+        h('button.btn', { type: 'button', onClick: () => confirmLeave() }, 'Sign out of this device'),
+      ),
+    ),
+
+    h('div.card-block', null,
       h('b', null, 'This build'),
       h('p.muted', null, 'Labels point at ', h('code', null, BASE_URL)),
       h('p.muted', null, 'Database ', h('code', null, host(SUPABASE_URL))),
       h('p.muted', null,
-        'Anyone with the site link can read and write the catalog — that is what lets a helper ' +
-        'open a link and start scanning. Nothing is stored on the scanning device.'),
+        'The catalog is private: without the password the database returns nothing at all, ' +
+        'so a stranger who scans a box gets a locked page and no data. Nothing is stored on ' +
+        'the scanning device beyond the sign-in itself.'),
     ),
   );
 }

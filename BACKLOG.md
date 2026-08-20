@@ -64,6 +64,27 @@ All four leaks are closed, and the rules now live in one place —
 `app/src/core/capabilities.js` — which the buttons ask, the writes ask, and the
 database backs with constraints and triggers.
 
+## ~~9. The catalog was open to anyone who scanned a box~~ — done
+
+The anon key ships in `config.js`, which is served from the same site every
+sticker points at — so anyone who scanned a label could read the whole catalog
+and, because the policy was `for all`, empty it. Closed by
+`supabase/migration-005-auth.sql`: `anon` holds no privilege on anything, and
+one shared account replaces it. A stranger gets a locked page with nothing
+behind it.
+
+Two things came with it. **`events.actor` stopped being a dead column** — the
+sign-in asks for a name, every event carries it, and the per-thing History shows
+it, which is what makes "who packed this" answerable under a shared password.
+And **photos moved to unguessable paths**, because `<ID>.jpg` was derivable from
+the code printed on the box, and because an upsert onto a fixed path was the one
+way something here could be destroyed rather than superseded.
+
+The history itself was already safe and stays that way: `events` has a select
+policy and an insert policy and nothing else, so nobody holding the password can
+edit or delete what they did. That is Postgres refusing, not the app declining
+to offer a button.
+
 ---
 
 ## Still open
@@ -75,14 +96,23 @@ database backs with constraints and triggers.
 2. **Camera + text problems** — item 6, still undescribed.
 3. **A photo can only be taken during enrolment**, on a screen you see once. Get
    a bad shot and there is no way back to it. Edit should take one.
-4. **`events.actor` is a dead column.** "Who packed this" is the one question a
-   shared catalog can answer that a solo one cannot, and nothing writes it. It
-   needs a name per device, asked once. Either use it or drop the column.
-5. **Unpacking at the far end** is only half-supported: **Empty** takes
+4. **Unpacking at the far end** is only half-supported: **Empty** takes
    everything out of a box, but there is no "tick items off as they come out".
-6. **Supabase free projects pause after about a week idle.** Over a multi-week
+5. **Supabase free projects pause after about a week idle.** Over a multi-week
    move this will happen: the app shows "No connection to the catalog" and it
    takes a click in the Supabase dashboard to wake. Not a bug, but it will look
    like one at the worst moment.
-7. **The catalog view fetches every row on each refresh.** Fine at 260 labels
+6. **The catalog view fetches every row on each refresh.** Fine at 260 labels
    (~100 kB); past a couple of thousand it wants pagination.
+7. **Photos are readable by URL without signing in.** The storage bucket answers
+   without a token, which is what lets `<img src>` work without threading a
+   signed URL through every view and refreshing it mid-session. What keeps them
+   private is that the paths are unguessable and the only record of them is in
+   the `things` row, which now needs a session to read. A leaked URL is still a
+   leaked photo. The fix is `createSignedUrl` at render time; it touches five
+   files and the backup exporter, and it was not worth it for a house move.
+8. **One shared password means no per-person revoke.** Losing a phone means
+   changing the password for everybody. Individual accounts would fix it and
+   would also make `events.actor` unforgeable, at the cost of an email round
+   trip per helper — Supabase's built-in SMTP allows a few sends an hour on the
+   free tier. Worth it for a team; not for four friends and a van.

@@ -113,6 +113,10 @@ deliberate action rather than an accident.
 | Export everything | Backup → Export bundle (JSON + CSV + photos) | ✅ |
 | Restore | Backup → Import — **replaces the catalog for everyone** | ✅ |
 | Mute the scan tones | Backup → Sound | ✅ |
+| Sign in | the locked page — name + shared password, once per device | ✅ |
+| Sign out | Backup → *Sign out of this device* | ✅ |
+| Read who did what | History on a thing — every event carries a name | ✅ |
+| Erase what you did | **impossible** — `events` takes inserts and nothing else | 🔒 |
 
 ---
 
@@ -201,3 +205,6 @@ to edit history; one function that does exactly this and nothing else does not.
 | Pack from the item's own page | done — **Put in a box…** |
 | `packed ⟺ parent_id` in the database (§4.3) | done — migration 002 |
 | Replace a photo (§4.4) | **open** |
+| Anyone who scanned a box could read everything | done — migration 005; `anon` holds nothing |
+| Who packed this | done — a name from the sign-in, on every event |
+| Covering your tracks | impossible by construction — no update or delete policy on `events` |

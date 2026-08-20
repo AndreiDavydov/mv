@@ -696,3 +696,26 @@ p { margin: 0 0 8px; }
   border: 1px solid #5a4318;
   border-radius: 10px;
 }
+
+/* ── the locked page ────────────────────────────────────────────────────── */
+/* No tab bar exists yet when this renders, so it owns the whole screen. */
+
+.gate {
+  min-height: 100dvh;
+  justify-content: center;
+  gap: 22px;
+  max-width: 380px;
+  margin-inline: auto;
+}
+.gate__head h2 { margin: 0 0 6px; }
+.gate__head p { margin: 0; font-size: 15px; line-height: 1.45; }
+.gate__form { display: flex; flex-direction: column; gap: 14px; }
+.gate__form .enroll__actions { padding: 0; }
+.gate__problem {
+  margin: 0;
+  min-height: 18px;
+  font-size: 14px;
+  font-weight: 560;
+  color: var(--bad);
+}
+.gate__foot { margin: 0; font-size: 13px; line-height: 1.5; }

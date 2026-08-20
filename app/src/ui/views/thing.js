@@ -169,7 +169,11 @@ function historyBlock(app, thing) {
         ? events.reverse().map((event) =>
             h('div.history__row', null,
               h('span.history__type', { class: `history__type--${event.type}` }, event.type),
-              h('span.history__where', null, event.parent_id ? `→ ${event.parent_id}` : ''),
+              // Everyone signs in with the same password, so this name is the
+              // only thing that distinguishes one helper from another — and it
+              // is worth showing, because nothing can take it back out again.
+              h('span.history__where', null,
+                [event.actor, event.parent_id && `→ ${event.parent_id}`].filter(Boolean).join(' ')),
               h('time.history__when', null, timeAgo(event.ts)),
             ))
         : [h('p.muted', null, 'No events.')]),

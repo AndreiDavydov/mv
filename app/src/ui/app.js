@@ -2,6 +2,7 @@ import { isConfigured } from '../../../config.js';
 import { isValidId, normalizeId } from '../../../shared/ids.js';
 import { parseScan } from '../../../shared/payload.js';
 import { RemoteCatalog } from '../core/remote.js';
+import { currentHelper, signOut } from '../core/auth.js';
 import { cueFor, decideScan, finishEnroll, startPacking, stopPacking } from '../core/machine.js';
 import { CameraScanner, KeyboardScanner } from '../platform/scanner.js';
 import { play, setMuted, warmUp } from '../platform/feedback.js';
@@ -14,6 +15,7 @@ import { thingView, unknownView } from './views/thing.js';
 import { searchView, treeView, unnamedView } from './views/browse.js';
 import { manifestView } from './views/manifest.js';
 import { backupView } from './views/backup.js';
+import { gateView } from './views/gate.js';
 
 /**
  * The controller. It owns the catalog, the camera, the session, and the one
@@ -23,6 +25,8 @@ import { backupView } from './views/backup.js';
 export class App {
   catalog;
   session;
+  /** Whose name goes on the events written from this device. */
+  helper = null;
   scanner;
   keyboard;
   video;
@@ -59,6 +63,34 @@ export class App {
     if (!isConfigured()) return this.#mount(setupView());
 
     this.catalog = RemoteCatalog.open();
+
+    // Nothing is loaded before this, deliberately: an unsigned browser gets no
+    // rows from the database anyway, and a screen that flashes the catalog and
+    // then covers it up would be worse than useless.
+    const helper = await currentHelper(this.catalog.raw);
+    if (!helper) return this.#mount(gateView(this));
+    return this.#start(helper);
+  }
+
+  /** Called by the gate the moment a password is accepted. */
+  enter(helper) {
+    return this.#start(helper);
+  }
+
+  /**
+   * Sign out this device. The session is the only thing on it, so this is the
+   * whole of "log me off this phone" — everyone else stays signed in, and the
+   * reload is what tears down the camera, the realtime channel and the routes
+   * in one go rather than one by one.
+   */
+  async leave() {
+    await signOut(this.catalog.raw);
+    location.reload();
+  }
+
+  async #start(helper) {
+    this.helper = helper;
+    this.catalog.actor = helper;
     this.session = await this.catalog.session();
     setMuted(localStorage.getItem('app.muted') === 'true');
 

@@ -51,6 +51,25 @@ export const SUPABASE_ANON_KEY =
 /** Nothing works without a database, so the app says so rather than looking broken. */
 export const isConfigured = () => Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
+/**
+ * ── Who gets in ─────────────────────────────────────────────────────────────
+ *
+ * One account, shared by everyone helping with the move. This address is the
+ * account's name, not a mailbox — nothing is ever sent to it, and `.invalid`
+ * is reserved by RFC 2606 precisely so it can never become someone's real
+ * address. The app fills it in, so a helper only ever types the password.
+ *
+ * The password itself is deliberately not here. It lives in the Supabase
+ * dashboard (Authentication → Users) and in whatever you use to tell four
+ * people a word. This file is served to the public internet.
+ *
+ * The account only means anything because `supabase/migration-005-auth.sql`
+ * revoked everything from `anon` — and because signups are turned off, which
+ * is the step that stops a stranger from minting their own account with the
+ * public key. Both are in that file's header.
+ */
+export const CREW_EMAIL = 'crew@moving.invalid';
+
 /** Crockford-style: no 0/O and no 1/I/L to confuse when typed by hand. */
 export const ID_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 

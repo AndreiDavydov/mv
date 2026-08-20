@@ -11,11 +11,12 @@ reason.
 | | |
 |---|---|
 | Live | https://andreidavydov.github.io/mv/app/ |
-| Database | Supabase `sqwbpeltdjyjrclrgejp`, migrations 002, 003 and 004 applied |
+| Database | Supabase `sqwbpeltdjyjrclrgejp`, migrations 002, 003, 004 and 005 applied |
+| Access | **private** — one shared password, `anon` holds nothing (see *Who gets in*) |
 | Catalog | empty — the test rows were cleared before the first real print |
 | Labels printed | **4 sheets, 260 labels, `2222` … `22A5`** |
 | Next free code | **`22A6`** — `npm run proofs -- --sheets=N` starts there by itself |
-| Tests | 111 unit (~0.2 s) · 59 live (~2 min) |
+| Tests | 126 unit (~0.2 s) · 67 live (~2 min, needs `CREW_PASSWORD`) |
 
 **The label sheet geometry was measured, not looked up.** The pack is Avery
 QuickPEEL 38 × 21.2, and its grid is *not* Avery L7651's: the columns butt
@@ -28,6 +29,65 @@ sheet with its four corner labels peeled off, and three tests in
 **What has never been tested:** whether the printed labels actually scan.
 Modules are 0.551 mm against the 0.72 mm the brief assumed. Everything else is
 verified; that is not. See *QR size* below for the fallbacks.
+
+### Who gets in
+
+The catalog is private, and the lock is in Postgres rather than in the app.
+
+`anon` — the role every browser gets from the public key in `config.js` — holds
+no privilege on any table. A stranger who scans a box reaches a locked page, and
+behind it the database returns zero rows to anything they ask. That distinction
+is the whole design: a password checked in JavaScript would have been worth
+nothing, because the key is printed in a file served from the same site and the
+REST API answers `curl` just as happily as it answers the app.
+
+Everyone helping shares **one account and one password**. The email address in
+`CREW_EMAIL` is the account's name, not a mailbox — the app fills it in, so a
+helper only ever types the password. Signing in once per device is the whole
+ceremony; the session survives a locked phone.
+
+Two settings live in the Supabase dashboard rather than in SQL, and the second
+one is load-bearing:
+
+1. **Authentication → Users → Add user** — the crew account, with Auto Confirm
+   ticked.
+2. **Authentication → Sign In / Providers → Email → "Allow new users to sign
+   up": OFF.** With signups on, anyone holding the public key calls `signUp()`,
+   becomes `authenticated`, and every policy waves them through. `gate.live.js`
+   asserts this from a browser that has never signed in.
+
+Changing the password on that user is the entire revocation story: everyone
+re-enters it once, and nobody's work is orphaned, because who did what is
+recorded by **name** in the event log rather than by account.
+
+### What cannot be erased
+
+The shared password means the database cannot tell helpers apart, so the event
+log carries a name typed at sign-in. That name is not a credential — it buys no
+access — and it is worth something only because the log cannot be edited.
+
+`events` has exactly two policies, `select` and `insert`. There is no update
+policy and no delete policy, and RLS denies what it was not told to allow. So
+"someone does something, then cleans up after themselves" is not a thing that
+can happen here: not through the app, not through the console, not with the key
+in hand. Deleting a *thing* is allowed — but `events` carries no foreign key to
+`things`, so the row going away leaves `enrolled ZZ4B "espresso machine"` and
+`deleted ZZ4B` standing in the log with a name on them.
+
+The one exception is `public.retire_code()`, which is `SECURITY DEFINER`
+precisely so that reassigning a label can move a record's events to its new id.
+It renames; it deletes nothing.
+
+Photos got the same treatment. Their storage paths used to be `<ID>.jpg` — and
+the ID is printed on the outside of the box, so any photo's URL was derivable by
+anyone who had seen a label, which no login could have fixed. They are now
+`<ID>-<random>.jpg`, the random half exists only in the `things` row, and the
+bucket takes inserts but no updates or deletes: re-photographing something adds
+a file and leaves the previous one where it was.
+
+Admin power is deliberately *not* an in-app role. It is the Supabase dashboard
+and the service-role key, which one person holds and no password shared with
+four people can reach.
 
 Open items are in [BACKLOG.md](BACKLOG.md); the state-space audit and the rules
 model are in [STATES.md](STATES.md).
@@ -48,9 +108,11 @@ not consumed anything.
 ```bash
 npm install
 npm run vendor          # bundles the npm deps into /vendor (output is committed)
-npm test                # 111 unit tests — pure rules, no browser, no network
-npm run test:live       # 59 tests against the real Supabase project, including
-                        #   two isolated browsers proving one sees the other's scan
+npm test                # 126 unit tests — pure rules, no browser, no network
+CREW_PASSWORD=... \
+  npm run test:live     # 67 tests against the real Supabase project, including
+                        #   two isolated browsers proving one sees the other's scan,
+                        #   and a third that has never signed in proving it sees nothing
 npm run serve           # http://localhost:8087/labels/  and  /app/
 ```
 
@@ -100,8 +162,8 @@ tests only.
 | script | what it does |
 |---|---|
 | `npm run vendor` | bundle `qrcode`, `jsqr`, `fflate`, `supabase-js` into `/vendor` as plain ESM |
-| `npm test` | unit tests — pure rules, no browser, no network (111, ~0.2s) |
-| `npm run test:live` | everything that needs the database, browsers included (59, ~2min) |
+| `npm test` | unit tests — pure rules, no browser, no network (126, ~0.2s) |
+| `npm run test:live` | everything that needs the database, browsers included (67, ~2min). Needs `CREW_PASSWORD` in the environment — the catalog requires a sign-in, and the password is not in the repo |
 | `npm run test:all` | both |
 | `npm run serve [port]` | static dev server; `localhost` is a secure context, so `getUserMedia` and service workers behave as on Pages |
 | `npm run proofs` | label sheets + calibration PDFs (`--sheets=N`, `--dx/--dy` nudge, `--sweep`, `--mark`) |
@@ -154,6 +216,7 @@ already in a bad state, so re-running one is harmless.
 | `supabase/migration-002-integrity.sql` | `packed ⟺ in a box`; retired-label ids; contents follow a rename |
 | `supabase/migration-003-rules.sql` | only an open container can contain; a kind belongs to a container; the one function allowed to touch the append-only log |
 | `supabase/migration-004-delete-fix.sql` | a box may be deleted *with* its contents, never out from under them |
+| `supabase/migration-005-auth.sql` | closes the catalog: `anon` loses every privilege, one shared account replaces it. **Its header names two dashboard settings that are not SQL — without them this file achieves nothing** |
 
 The live tests skip themselves by name when a migration is missing, rather than
 failing or — worse — passing.

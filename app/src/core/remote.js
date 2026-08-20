@@ -27,6 +27,7 @@ export class RemoteCatalog {
   #now;
   #seq = 0;
   #lastGroup = null;
+  #actor = null;
 
   constructor(client, { now = () => Date.now() } = {}) {
     this.#db = client;
@@ -36,7 +37,17 @@ export class RemoteCatalog {
   static open({ url = SUPABASE_URL, key = SUPABASE_ANON_KEY, now } = {}) {
     if (!url || !key) throw new Error('Supabase is not configured — see config.js');
     const client = createClient(url, key, {
-      auth: { persistSession: false },
+      auth: {
+        // The session is what gets you past the gate, so it has to survive a
+        // locked phone and a closed tab: sign in once per device, not once per
+        // box. supabase-js refreshes it in the background.
+        persistSession: true,
+        autoRefreshToken: true,
+        // Our fragment carries a label ID (`#K7M3`), never an auth token — and
+        // a library that rewrites location.hash on boot would eat the scan that
+        // brought the browser here.
+        detectSessionInUrl: false,
+      },
       realtime: { params: { eventsPerSecond: 20 } },
     });
     return new RemoteCatalog(client, { now });
@@ -44,6 +55,22 @@ export class RemoteCatalog {
 
   get raw() {
     return this.#db;
+  }
+
+  /**
+   * The name stamped on every event this device writes.
+   *
+   * Everyone shares one password, so the database cannot tell helpers apart —
+   * this is the only thing that can. It is set once at sign-in and is not a
+   * credential: it buys no access, it just makes the log readable. Since the
+   * log is append-only in Postgres, a name that lands in it stays there.
+   */
+  set actor(name) {
+    this.#actor = name || null;
+  }
+
+  get actor() {
+    return this.#actor;
   }
 
   // ── liveness ─────────────────────────────────────────────────────────────
@@ -438,7 +465,8 @@ export class RemoteCatalog {
 
   async #log(rows) {
     if (!rows.length) return;
-    const { error } = await this.#db.from('events').insert(rows);
+    const stamped = rows.map((row) => ({ actor: this.#actor, ...row }));
+    const { error } = await this.#db.from('events').insert(stamped);
     // The write already happened; a lost log line must not present as a failed
     // action. It is worth knowing about, so it is not swallowed silently.
     if (error) console.error('event log write failed', error);
@@ -447,24 +475,33 @@ export class RemoteCatalog {
   // ── photos ───────────────────────────────────────────────────────────────
 
   /**
-   * Upload a photo and its thumbnail, returning public URLs. Upsert, so
-   * re-photographing an item replaces rather than accumulating.
+   * Upload a photo and its thumbnail, returning the URLs to store on the row.
+   *
+   * The path used to be `<ID>.jpg`, which had two problems. The ID is printed
+   * on the outside of the box, so the URL of any photo was derivable by anyone
+   * who had seen a label — a hole the login could not close, because the
+   * storage bucket answers without one. And uploading over it replaced the
+   * previous image, the one way something in this catalog could actually be
+   * destroyed rather than merely superseded.
+   *
+   * A random half fixes both. The path is unguessable, and the only copy of it
+   * lives in the `things` row, which now requires a session to read; and every
+   * photograph writes a new file, so the earlier one is still there.
    */
   async uploadPhoto(id, { photo, thumb }) {
     const key = normalizeId(id);
+    const stamp = token();
     const urls = {};
     for (const [field, blob, path] of [
-      ['photo_url', photo, `${key}.jpg`],
-      ['thumb_url', thumb, `${key}-thumb.jpg`],
+      ['photo_url', photo, `${key}-${stamp}.jpg`],
+      ['thumb_url', thumb, `${key}-${stamp}-thumb.jpg`],
     ]) {
       if (!blob) continue;
       const { error } = await this.#db.storage
         .from('photos')
-        .upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+        .upload(path, blob, { contentType: 'image/jpeg' });
       if (error) throw wrap(error, 'could not upload the photo');
-      const { data } = this.#db.storage.from('photos').getPublicUrl(path);
-      // Cache-bust, or an upsert keeps showing the previous photo.
-      urls[field] = `${data.publicUrl}?v=${this.#now()}`;
+      urls[field] = this.#db.storage.from('photos').getPublicUrl(path).data.publicUrl;
     }
     return urls;
   }
@@ -558,4 +595,15 @@ function wrap(error, context) {
   const detail = error.message ?? String(error);
   if (/already inside|cannot contain itself/.test(detail)) return new Error(detail);
   return new Error(`${context}: ${detail}`);
+}
+
+/**
+ * Eight hex characters of randomness for a storage path — 32 bits, which is
+ * plenty for a house's worth of photos and short enough to stay readable in a
+ * URL. It is not a secret in the cryptographic sense; it only has to be
+ * something you cannot derive from the code printed on the box.
+ */
+function token() {
+  const bytes = crypto.getRandomValues(new Uint8Array(4));
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 }

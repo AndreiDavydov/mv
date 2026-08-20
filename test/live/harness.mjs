@@ -78,8 +78,25 @@ export async function launch({ cameraFile, headless = true } = {}) {
   });
 }
 
-/** A page with the app booted and a clean database. */
-export async function openApp(browser, { hash = '' } = {}) {
+/**
+ * The shared password, from the environment. It is not in the repo and must
+ * not end up there — these tests write to the same database four people are
+ * using.
+ *
+ *   CREW_PASSWORD=... npm run test:live
+ */
+export const CREW_PASSWORD = process.env.CREW_PASSWORD ?? '';
+
+export function requireCrewPassword() {
+  if (CREW_PASSWORD) return CREW_PASSWORD;
+  throw new Error(
+    'CREW_PASSWORD is not set. The catalog needs a sign-in since migration 005 — ' +
+      'run: CREW_PASSWORD=... npm run test:live',
+  );
+}
+
+/** A page with the app booted, signed in, and a clean database. */
+export async function openApp(browser, { hash = '', signedIn = true } = {}) {
   const page = await browser.newPage();
   // Every wait is a network round trip against a hosted database; puppeteer's
   // 30s default is impatience, not a signal.
@@ -89,7 +106,29 @@ export async function openApp(browser, { hash = '' } = {}) {
 
   await page.goto(`${BASE}/app/${hash}`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => globalThis.app?.catalog, { timeout: 15_000 });
+  if (signedIn) await signIn(page);
   return page;
+}
+
+/**
+ * Get past the locked page, if it is showing.
+ *
+ * Deliberately not by typing into the form: that is the gate's own behaviour
+ * and it is tested once, properly, in gate.live.js. Everywhere else this is
+ * setup, and setup that goes through four keystrokes and a network round trip
+ * per test file is setup that makes the suite slower without testing anything
+ * the gate suite has not already covered.
+ */
+export async function signIn(page, { name = 'test runner' } = {}) {
+  const locked = await page.$('.gate');
+  if (!locked) return;
+
+  await page.evaluate(async (password, who) => {
+    const { signIn: enter } = await import('./src/core/auth.js');
+    await globalThis.app.enter(await enter(globalThis.app.catalog.raw, { name: who, password }));
+  }, requireCrewPassword(), name);
+
+  await page.waitForFunction(() => !document.querySelector('.gate'), { timeout: 20_000 });
 }
 
 /**
