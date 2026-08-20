@@ -36,58 +36,53 @@ adding the UI back later is a few lines. Search should stop matching on it.
 
 Leaves `box`, `suitcase`, `crate`, `bag`. A shelf is not a thing you carry.
 
-## 5. Reassigning a code to a different thing
+## ~~5. Reassigning a code to a different thing~~ — done
 
-A label outlives its first use: a box gets emptied and refilled, a sticker goes
-on the wrong thing, a label is peeled off something sold. None of it is possible
-today — enrolling a code that exists fails with "already enrolled".
+A label outlives its first use. Retiring rather than overwriting: `K7M3` becomes
+`K7M3-1`, keeping its name, photo, contents and history, and `K7M3` is free to
+scan onto something new. Reuse it again and the next is `K7M3-2`. The rename is
+a `SECURITY DEFINER` function because the event log is append-only by policy and
+a record's history has to follow it.
 
-Not a small fix: the code *is* the identity (`things.id` is the primary key and
-every event points at it). The correct model separates them — `thing_id` (uuid)
-as the key, `code` as a reassignable unique field — so the old thing keeps its
-history and photos and simply loses its label, which is exactly what happened to
-it physically.
+Analysis and flow: [STATES.md §5](STATES.md).
 
-Full analysis and the recommended flow: [STATES.md §5](STATES.md).
+## 6. Camera + text entry problems during scanning — STILL OPEN
 
-## 6. Camera + text entry problems during scanning
-
-Reported but not yet described: "a few problems when scanning with camera and
+Reported but never described: "a few problems when scanning with camera and
 adding text". Needs specifics before anything is changed — which screen, what
-was expected, what happened.
+was expected, what happened. This is the oldest open item.
+
+## ~~7. Gone items were invisible in the list~~ — done
+
+Struck through and tagged `gone` in the Catalog and in search, and excluded from
+the packing pick-list.
+
+## ~~8. Gaps found by auditing the state space~~ — done
+
+[STATES.md](STATES.md) enumerates 27 containment configurations and 128 states.
+All four leaks are closed, and the rules now live in one place —
+`app/src/core/capabilities.js` — which the buttons ask, the writes ask, and the
+database backs with constraints and triggers.
 
 ---
 
-## Also outstanding
+## Still open
 
-- ~~**`npm run test:e2e` is stale.**~~ Rewritten. `test/e2e/` is gone; every
-  test that needs the database lives in `test/live/` (38 tests, ~4 min).
-  `npm test` stays pure and instant (83 tests, no network).
-- **The printed label test has never been run.** `proofs/sheet-2222.pdf` is
-  ready; five labels need to scan first-try at arm's length in poor light. The
-  modules are 0.551 mm, below the 0.72 mm the original brief assumed — see the
-  *QR size* section in [BUILD.md](BUILD.md) for the three fallbacks if they fail.
-- **Test junk in the database:** a `ZZZZ` probe event and `photos/probe.txt`.
-  Neither is deletable with the anon key by design. Clear with
-  `delete from public.events where thing_id = 'ZZZZ';` in the SQL editor.
-
-## 7. Gone items were invisible in the list — done
-
-A thing marked gone read exactly like a tracked one. It is now struck through
-and tagged `gone` in the Catalog and in search results, and excluded from the
-packing pick-list.
-
-## 8. Gaps found by auditing the state space
-
-Enumerated in [STATES.md](STATES.md) — 27 containment configurations, 128 states
-once `gone` is included, and every route to every action. Four leaks, ranked:
-
-- **A gone container keeps its contents.** `Gone` clears the thing's own parent
-  but not its children, producing a struck-through box that still contains
-  things which still claim to be `packed`. Refuse while it is not empty.
-- **Packing silently resurrects a gone thing.** The pick-list hides them;
-  scanning does not, and `packInto` writes `packed` over `gone` without comment.
-  So the only way back from gone is an accident, and there is no deliberate one.
-- **No way to pack from an item's own page** — you must be holding it with the
-  camera open, or already packing the target box.
-- **A photo can only be taken during enrolment**, on a screen you see once.
+1. **The printed labels have never been scan-tested.** Four sheets are printed
+   (`2222` … `22A5`). Stick five, scan them in the worst light you will actually
+   work in. Modules are 0.551 mm against the 0.72 mm the brief assumed; if they
+   fail, the three fallbacks are in [BUILD.md](BUILD.md) under *QR size*.
+2. **Camera + text problems** — item 6, still undescribed.
+3. **A photo can only be taken during enrolment**, on a screen you see once. Get
+   a bad shot and there is no way back to it. Edit should take one.
+4. **`events.actor` is a dead column.** "Who packed this" is the one question a
+   shared catalog can answer that a solo one cannot, and nothing writes it. It
+   needs a name per device, asked once. Either use it or drop the column.
+5. **Unpacking at the far end** is only half-supported: **Empty** takes
+   everything out of a box, but there is no "tick items off as they come out".
+6. **Supabase free projects pause after about a week idle.** Over a multi-week
+   move this will happen: the app shows "No connection to the catalog" and it
+   takes a click in the Supabase dashboard to wake. Not a bug, but it will look
+   like one at the worst moment.
+7. **The catalog view fetches every row on each refresh.** Fine at 260 labels
+   (~100 kB); past a couple of thousand it wants pagination.

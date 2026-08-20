@@ -6,12 +6,49 @@ reason.
 
 ---
 
+## Where this stands
+
+| | |
+|---|---|
+| Live | https://andreidavydov.github.io/mv/app/ |
+| Database | Supabase `sqwbpeltdjyjrclrgejp`, migrations 002, 003 and 004 applied |
+| Catalog | empty — the test rows were cleared before the first real print |
+| Labels printed | **4 sheets, 260 labels, `2222` … `22A5`** |
+| Next free code | **`22A6`** — `npm run proofs -- --sheets=N` starts there by itself |
+| Tests | 111 unit (~0.2 s) · 59 live (~2 min) |
+
+**The label sheet geometry was measured, not looked up.** The pack is Avery
+QuickPEEL 38 × 21.2, and its grid is *not* Avery L7651's: the columns butt
+together at 38.0 mm with 10 mm side margins, where L7651 has 2.5 mm alleys on a
+40.6 pitch. Using the published figures put every column after the first in the
+wrong place. The figures in `labels/sheets.js` come from a 600 dpi scan of the
+sheet with its four corner labels peeled off, and three tests in
+`test/sheets.test.js` hold them to it.
+
+**What has never been tested:** whether the printed labels actually scan.
+Modules are 0.551 mm against the 0.72 mm the brief assumed. Everything else is
+verified; that is not. See *QR size* below for the fallbacks.
+
+Open items are in [BACKLOG.md](BACKLOG.md); the state-space audit and the rules
+model are in [STATES.md](STATES.md).
+
+### Which codes have been printed
+
+`proofs/printed.json` is the ledger, committed with the code. The labels page
+keeps the same counter in the browser, but sheets generated from the command
+line never touch the browser — so without this, nothing stopped two boxes
+answering to the same code. Generating refuses a code already recorded; `--mark`
+records a range once it has actually printed, because a sheet that jammed has
+not consumed anything.
+
+---
+
 ## Quick start
 
 ```bash
 npm install
 npm run vendor          # bundles the npm deps into /vendor (output is committed)
-npm test                # 108 unit tests — pure rules, no browser, no network
+npm test                # 111 unit tests — pure rules, no browser, no network
 npm run test:live       # 59 tests against the real Supabase project, including
                         #   two isolated browsers proving one sees the other's scan
 npm run serve           # http://localhost:8087/labels/  and  /app/
@@ -63,11 +100,11 @@ tests only.
 | script | what it does |
 |---|---|
 | `npm run vendor` | bundle `qrcode`, `jsqr`, `fflate`, `supabase-js` into `/vendor` as plain ESM |
-| `npm test` | unit tests — pure rules, no browser, no network (108, ~0.2s) |
+| `npm test` | unit tests — pure rules, no browser, no network (111, ~0.2s) |
 | `npm run test:live` | everything that needs the database, browsers included (59, ~2min) |
 | `npm run test:all` | both |
 | `npm run serve [port]` | static dev server; `localhost` is a secure context, so `getUserMedia` and service workers behave as on Pages |
-| `npm run proofs` | full-scale A4 sheet PDF + a single label rendered on a box |
+| `npm run proofs` | label sheets + calibration PDFs (`--sheets=N`, `--dx/--dy` nudge, `--sweep`, `--mark`) |
 | `npm run shots` | screenshot every screen at phone size into `proofs/screens/` |
 | `npm run demo` | the mock scan test, above |
 
@@ -133,8 +170,12 @@ labels/                DELIVERABLE 1 — open index.html, print
   sheets.js            sheet geometry as data
 supabase/schema.sql    the shared database: tables, triggers, access rules, bucket
 app/                   DELIVERABLE 2 — the app
-  src/core/            no DOM: model (pure rules), remote (Postgres), machine,
-                       search, backup
+  src/core/            no DOM, no network:
+    capabilities.js      what a thing may do — asked by the buttons AND the writes
+    model.js             the rules: what an event records, which action undo reverses
+    machine.js           the scan state machine
+    remote.js            the same surface, resolving against Postgres
+    search.js  backup.js
   src/platform/        camera, decode, tones, image downscaling, files
   src/ui/              a 100-line DOM helper, components, views, controller
   sw.js                caches the shell, network-first
