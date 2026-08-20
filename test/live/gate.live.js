@@ -80,6 +80,7 @@ test('the public key reads nothing at all, which is what makes the page honest',
 });
 
 test('the public key cannot write, so nobody can vandalise the move', async () => {
+  const crew = await browser.createBrowserContext();
   const { page, context } = await stranger();
   try {
     const insert = await askAnon(page, 'things', {
@@ -88,10 +89,21 @@ test('the public key cannot write, so nobody can vandalise the move', async () =
     });
     assert.ok(insert.status >= 400, `anon insert was accepted (${insert.status})`);
 
+    // A DELETE is not refused — RLS filters the rows it may touch, finds none,
+    // and PostgREST honestly reports that it deleted nothing: 204. So the
+    // status says nothing useful, and the only question worth asking is
+    // whether the row is still there afterwards.
+    const inside = await openApp(crew);
+    await inside.evaluate(() => globalThis.app.catalog.enroll({ id: 'ZZ78', name: 'Bait' }));
+
     const wipe = await askAnon(page, 'things?id=neq.none', { method: 'DELETE' });
-    assert.ok(wipe.status >= 400, `anon delete was accepted (${wipe.status})`);
+    const survived = await inside.evaluate(() => globalThis.app.catalog.get('ZZ78'));
+
+    assert.ok(survived, `anon deleted a row (DELETE returned ${wipe.status})`);
+    await inside.evaluate(() => globalThis.app.catalog.raw.from('things').delete().like('id', 'ZZ7%'));
   } finally {
     await context.close();
+    await crew.close();
   }
 });
 
@@ -146,8 +158,11 @@ test('the right password opens it, on the thing that was scanned', async () => {
     await page.waitForFunction(() => !document.querySelector('.gate'), { timeout: 30_000 });
     await page.waitForSelector('#tabbar .tab');
 
-    // The scan that brought the browser here is still the address it lands on.
-    assert.equal(await page.evaluate(() => location.hash), '#ZZ72');
+    // The scan that brought the browser here is picked up where it was left:
+    // ZZ72 is not in the catalog, so the app does what it does for any unknown
+    // code and opens ENROLL on it. The address moves; the code does not.
+    await page.waitForSelector('.view--enroll');
+    assert.equal(await page.$eval('.enroll__id code', (el) => el.textContent), 'ZZ72');
     assert.equal(await page.evaluate(() => globalThis.app.helper), 'Andrey');
 
     // And the session is what survives, not the password.
@@ -184,17 +199,27 @@ test('what a helper does is stamped with their name, and cannot be unstamped', a
     assert.ok(events.length > 0);
     assert.equal(events.at(-1).actor, 'test runner');
 
-    // The log refuses to be rewritten or thinned out — no policy allows it,
-    // so this is Postgres saying no, not the app declining to offer a button.
-    const edited = await page.evaluate(async () => {
+    // The log refuses to be rewritten or thinned out. Like the anon DELETE
+    // above, neither call is *refused* — RLS finds no rows it may touch and
+    // reports having changed nothing — so the check is a before-and-after on
+    // the log itself. Reserved ids get reused across runs and the log is
+    // append-only, so ZZ73 also carries events from months ago; comparing the
+    // whole picture is what makes "nothing moved" mean nothing at all moved.
+    const before = await page.evaluate(() =>
+      globalThis.app.catalog.raw.from('events').select('id,actor').eq('thing_id', 'ZZ73')
+        .order('id').then((r) => r.data));
+
+    await page.evaluate(async () => {
       const db = globalThis.app.catalog.raw;
-      const { error: u } = await db.from('events').update({ actor: 'nobody' }).eq('thing_id', 'ZZ73');
-      const { error: d } = await db.from('events').delete().eq('thing_id', 'ZZ73');
-      const { data } = await db.from('events').select('actor').eq('thing_id', 'ZZ73');
-      return { update: u?.message ?? null, delete: d?.message ?? null, left: data };
+      await db.from('events').update({ actor: 'nobody' }).eq('thing_id', 'ZZ73');
+      await db.from('events').delete().eq('thing_id', 'ZZ73');
     });
-    assert.ok(edited.left.length > 0, 'the history survived a signed-in delete');
-    assert.ok(edited.left.every((e) => e.actor === 'test runner'), 'and was not rewritten');
+
+    const after = await page.evaluate(() =>
+      globalThis.app.catalog.raw.from('events').select('id,actor').eq('thing_id', 'ZZ73')
+        .order('id').then((r) => r.data));
+
+    assert.deepEqual(after, before, 'a signed-in client changed the history');
 
     await page.evaluate(() => globalThis.app.catalog.raw.from('things').delete().like('id', 'ZZ7%'));
   } finally {

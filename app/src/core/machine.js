@@ -35,14 +35,30 @@ export const CONTINUOUS_SOURCE = 'camera';
  */
 
 /**
+ * Is this the decoder seeing the same unmoving label again?
+ *
+ * Split out of `decideScan` because the caller has to be able to ask *before*
+ * it fetches the row. The decode loop does not await the handler — the next
+ * frame is read as soon as the previous one has been — so three frames can be
+ * inside a scan at once, all holding the same session, all deciding to pack.
+ * The stamp has to land before the first await or the cooldown guards nothing.
+ */
+export function isRepeatScan(session, { id, ts, source = 'manual' }) {
+  return (
+    source === CONTINUOUS_SOURCE &&
+    id === session.last_scan_id &&
+    ts - session.last_scan_ts < SCAN_COOLDOWN_MS
+  );
+}
+
+/**
  * @param {Session} session
  * @param {{id: string, ts: number, thing: Thing,
  *          source?: 'camera'|'hid'|'human'|'manual'|'link'}} scan
  * @returns {{intent: Intent, session: Session}}
  */
 export function decideScan(session, { id, ts, thing, source = 'manual' }) {
-  const repeat = id === session.last_scan_id && ts - session.last_scan_ts < SCAN_COOLDOWN_MS;
-  if (repeat && source === CONTINUOUS_SOURCE) {
+  if (isRepeatScan(session, { id, ts, source })) {
     return { intent: { type: 'ignore', reason: 'cooldown' }, session };
   }
 

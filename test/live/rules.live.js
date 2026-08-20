@@ -1,6 +1,6 @@
 import test, { after, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { RemoteCatalog } from '../../app/src/core/remote.js';
+import { openCatalog } from './harness.mjs';
 
 /**
  * The rules that were being enforced by whether a button had been rendered,
@@ -17,8 +17,8 @@ const Y = 'ZZ63';
 
 let catalog;
 
-before(() => {
-  catalog = RemoteCatalog.open();
+before(async () => {
+  catalog = await openCatalog();
 });
 
 after(async () => {

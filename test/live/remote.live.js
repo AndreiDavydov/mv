@@ -1,6 +1,6 @@
 import test, { after, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { RemoteCatalog } from '../../app/src/core/remote.js';
+import { openCatalog } from './harness.mjs';
 import { SUPABASE_URL } from '../../config.js';
 
 /**
@@ -22,8 +22,8 @@ let catalog;
  */
 let watermark = 0;
 
-before(() => {
-  catalog = RemoteCatalog.open();
+before(async () => {
+  catalog = await openCatalog();
 });
 
 after(async () => {
@@ -205,8 +205,9 @@ test('an invalid id is refused by the database, not just the client', async () =
 });
 
 test('a scan on one device is visible to another', async () => {
-  // Two clients, as two phones would be. No shared memory between them.
-  const other = RemoteCatalog.open();
+  // Two clients, as two phones would be. No shared memory between them —
+  // each signs in for itself, the way two helpers do.
+  const other = await openCatalog({ actor: 'second device' });
   try {
     await catalog.enroll({ id: 'ZZ22', name: 'Written by the first device' });
     const seen = await other.get('ZZ22');
@@ -216,7 +217,7 @@ test('a scan on one device is visible to another', async () => {
   }
 });
 
-test('a photo uploads to shared storage and is readable without a key', async () => {
+test('a photo uploads to a path nobody can derive from the label', async () => {
   await catalog.enroll({ id: 'ZZ26', name: 'Pan' });
 
   // A real 2x2 JPEG — small enough to inline, valid enough that storage and
@@ -231,7 +232,17 @@ test('a photo uploads to shared storage and is readable without a key', async ()
   const photo = new Blob([bytes], { type: 'image/jpeg' });
 
   const urls = await catalog.uploadPhoto('ZZ26', { photo, thumb: photo });
-  assert.match(urls.photo_url, /\/storage\/v1\/object\/public\/photos\/ZZ26\.jpg/);
+
+  // The bucket answers without a token, which is what lets <img src> work on
+  // every device without a signed URL that expires mid-session. So the path
+  // is what has to be unguessable — `ZZ26.jpg` would have been derivable by
+  // anyone who had read the code printed on the box.
+  assert.match(urls.photo_url, /\/storage\/v1\/object\/public\/photos\/ZZ26-[0-9a-f]{8}\.jpg$/);
+
+  // And a second photograph must not land on the first one: overwriting was
+  // the one way something in this catalog could be destroyed outright.
+  const again = await catalog.uploadPhoto('ZZ26', { photo, thumb: photo });
+  assert.notEqual(again.photo_url, urls.photo_url, 'a re-photograph overwrote the first');
 
   // Fetched with no credentials at all, exactly as an <img> on another device.
   const response = await fetch(urls.photo_url);
@@ -246,7 +257,7 @@ test('undo targets the action you took, not whatever happened last', async () =>
   // Two helpers. One packs, the other packs something else a moment later.
   // Offering "undo the last action" would hand the first person the second
   // person's work to reverse.
-  const other = RemoteCatalog.open();
+  const other = await openCatalog({ actor: 'the other helper' });
   try {
     await catalog.enroll({ id: 'ZZ2A', name: 'Box A', is_container: true });
     await catalog.enroll({ id: 'ZZ27', name: 'Mine' });

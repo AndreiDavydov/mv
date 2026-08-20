@@ -16,7 +16,7 @@ reason.
 | Catalog | empty — the test rows were cleared before the first real print |
 | Labels printed | **4 sheets, 260 labels, `2222` … `22A5`** |
 | Next free code | **`22A6`** — `npm run proofs -- --sheets=N` starts there by itself |
-| Tests | 126 unit (~0.2 s) · 67 live (~2 min, needs `CREW_PASSWORD`) |
+| Tests | 129 unit (~0.2 s) · 67 live (~2 min, needs `CREW_PASSWORD`) |
 
 **The label sheet geometry was measured, not looked up.** The pack is Avery
 QuickPEEL 38 × 21.2, and its grid is *not* Avery L7651's: the columns butt
@@ -108,7 +108,7 @@ not consumed anything.
 ```bash
 npm install
 npm run vendor          # bundles the npm deps into /vendor (output is committed)
-npm test                # 126 unit tests — pure rules, no browser, no network
+npm test                # 129 unit tests — pure rules, no browser, no network
 CREW_PASSWORD=... \
   npm run test:live     # 67 tests against the real Supabase project, including
                         #   two isolated browsers proving one sees the other's scan,
@@ -162,7 +162,7 @@ tests only.
 | script | what it does |
 |---|---|
 | `npm run vendor` | bundle `qrcode`, `jsqr`, `fflate`, `supabase-js` into `/vendor` as plain ESM |
-| `npm test` | unit tests — pure rules, no browser, no network (126, ~0.2s) |
+| `npm test` | unit tests — pure rules, no browser, no network (129, ~0.2s) |
 | `npm run test:live` | everything that needs the database, browsers included (67, ~2min). Needs `CREW_PASSWORD` in the environment — the catalog requires a sign-in, and the password is not in the repo |
 | `npm run test:all` | both |
 | `npm run serve [port]` | static dev server; `localhost` is a secure context, so `getUserMedia` and service workers behave as on Pages |
@@ -373,6 +373,21 @@ decoder does not fire thirty times at one unmoving label — but it also swallow
 the *deliberate* second scan in the most common sequence there is: enrol an item,
 tap "Pack into this", scan that same item. Changing mode now resets the cooldown.
 Regression test: `test/machine.test.js`, "changing mode clears the cooldown".
+
+### The cooldown is claimed before the row is fetched
+
+Found by `camera.live.js` once it could run again: one sticker held in front of
+the camera produced *three* `packed` entries. The decode loop does not await the
+scan handler — the next frame is read as soon as the previous one has been — so
+three frames were inside `scan()` at once, all holding the same session, all
+fetching a row that still said "not packed yet", and all deciding to pack it.
+The cooldown was stamped after that fetch, which is a network round trip too
+late to guard anything.
+
+`isRepeatScan()` is the same rule `decideScan` uses, split out so `app.scan()`
+can ask it and stamp the session synchronously, before its first await. It
+matters more now than it did: the event log cannot be tidied up afterwards, so a
+duplicate written into it stays written.
 
 ### `shared/` exists
 

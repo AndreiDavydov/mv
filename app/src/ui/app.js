@@ -3,7 +3,7 @@ import { isValidId, normalizeId } from '../../../shared/ids.js';
 import { parseScan } from '../../../shared/payload.js';
 import { RemoteCatalog } from '../core/remote.js';
 import { currentHelper, signOut } from '../core/auth.js';
-import { cueFor, decideScan, finishEnroll, startPacking, stopPacking } from '../core/machine.js';
+import { cueFor, decideScan, finishEnroll, isRepeatScan, startPacking, stopPacking } from '../core/machine.js';
 import { CameraScanner, KeyboardScanner } from '../platform/scanner.js';
 import { play, setMuted, warmUp } from '../platform/feedback.js';
 import { h, plural } from './dom.js';
@@ -148,8 +148,19 @@ export class App {
     if (this.#saving) return;
 
     const { id } = parsed;
+
+    // Claim the cooldown before the first await. The camera does not wait for
+    // this method to finish before reading the next frame, so without a
+    // synchronous stamp three frames of the same sticker all read one stale
+    // session, all fetch a row that says "not packed yet", and all decide to
+    // pack it — three identical entries in a log that cannot be tidied up.
+    const ts = Date.now();
+    const pending = this.session;
+    if (isRepeatScan(pending, { id, ts, source })) return;
+    this.session = { ...pending, last_scan_id: id, last_scan_ts: ts };
+
     const thing = (await this.catalog.get(id)) ?? null;
-    const { intent, session } = decideScan(this.session, { id, ts: Date.now(), thing, source });
+    const { intent, session } = decideScan(pending, { id, ts, thing, source });
     if (intent.type === 'ignore') return;
 
     await this.#setSession(session);

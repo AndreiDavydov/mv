@@ -1,13 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  SCAN_COOLDOWN_MS,
-  cueFor,
-  decideScan,
-  finishEnroll,
-  startPacking,
-  stopPacking,
-} from '../app/src/core/machine.js';
+import { SCAN_COOLDOWN_MS, cueFor, decideScan, finishEnroll, isRepeatScan, startPacking, stopPacking } from '../app/src/core/machine.js';
 import { DEFAULT_SESSION } from '../app/src/core/model.js';
 
 const item = (id, parent_id = null) => ({ id, name: id, is_container: false, parent_id });
@@ -142,4 +135,41 @@ test('every intent has an audible cue except the ignored one', () => {
   assert.equal(cueFor({ type: 'ask-switch-target' }), 'query');
   assert.equal(cueFor({ type: 'ignore' }), null);
   assert.equal(cueFor({ type: 'whatever' }), 'error');
+});
+
+// ── the cooldown, asked before the row is fetched ───────────────────────────
+
+test('the cooldown can be asked without a row, which is what makes it usable', () => {
+  const session = { ...DEFAULT_SESSION, last_scan_id: 'K7M3', last_scan_ts: 1000 };
+
+  assert.equal(isRepeatScan(session, { id: 'K7M3', ts: 1500, source: 'camera' }), true);
+  assert.equal(isRepeatScan(session, { id: 'K7M3', ts: 4000, source: 'camera' }), false);
+  assert.equal(isRepeatScan(session, { id: 'ZZ4B', ts: 1500, source: 'camera' }), false);
+});
+
+test('only the camera is rate-limited — a deliberate rescan always lands', () => {
+  const session = { ...DEFAULT_SESSION, last_scan_id: 'K7M3', last_scan_ts: 1000 };
+
+  for (const source of ['manual', 'hid', 'link', 'human']) {
+    assert.equal(
+      isRepeatScan(session, { id: 'K7M3', ts: 1001, source }),
+      false,
+      `${source} must not be swallowed`,
+    );
+  }
+});
+
+test('decideScan and isRepeatScan agree, so the caller cannot stamp twice', () => {
+  // app.scan() claims the cooldown synchronously and then hands decideScan the
+  // session as it was *before* the stamp. If the two rules ever disagreed, that
+  // second call would see its own stamp and ignore every camera scan.
+  const session = { ...DEFAULT_SESSION, last_scan_id: 'K7M3', last_scan_ts: 1000 };
+  const scan = { id: 'K7M3', ts: 1500, source: 'camera' };
+
+  assert.equal(isRepeatScan(session, scan), true);
+  assert.equal(decideScan(session, { ...scan, thing: null }).intent.type, 'ignore');
+
+  const later = { ...scan, ts: 9000 };
+  assert.equal(isRepeatScan(session, later), false);
+  assert.notEqual(decideScan(session, { ...later, thing: null }).intent.type, 'ignore');
 });

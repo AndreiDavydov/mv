@@ -1,7 +1,6 @@
 import test, { after, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { BASE, launch, startServer } from './harness.mjs';
-import { RemoteCatalog } from '../../app/src/core/remote.js';
+import { BASE, launch, openCatalog, signIn, startServer } from './harness.mjs';
 
 /**
  * The requirement, tested the way it will actually be used: two browsers open
@@ -22,7 +21,7 @@ let catalog;
 before(async () => {
   server = await startServer();
   browser = await launch();
-  catalog = RemoteCatalog.open();
+  catalog = await openCatalog();
 
   // Separate browser contexts, so neither can read the other's storage. The
   // only thing joining these two screens is the database.
@@ -37,6 +36,7 @@ async function openIsolated() {
   page.on('pageerror', (error) => console.error('[page error]', error.message));
   await page.goto(`${BASE}/app/`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => globalThis.app?.catalog, { timeout: 20_000 });
+  await signIn(page);
   return page;
 }
 
@@ -80,7 +80,7 @@ test('a scan on one device appears on the other without a reload', async () => {
   assert.ok(shown.includes('ZZ32'), `laptop tree showed ${JSON.stringify(shown)}`);
 });
 
-test('nothing is stored on the scanning device', async () => {
+test('no catalog is kept on the scanning device — only the sign-in', async () => {
   await phone.evaluate(() => (location.hash = '#ZZ33'));
   await phone.waitForSelector('.view--enroll', { timeout: 15_000 });
   await phone.type('.enroll__form .field__input', 'Kettle');
@@ -89,15 +89,21 @@ test('nothing is stored on the scanning device', async () => {
 
   const local = await phone.evaluate(async () => ({
     databases: (await indexedDB.databases?.())?.map((d) => d.name) ?? [],
-    // The packing session is UI state and stays put; nothing else may.
     localStorage: Object.keys(localStorage),
+    stored: JSON.stringify(localStorage),
   }));
 
   assert.deepEqual(local.databases, [], 'the phone must not keep a local catalog');
+
+  // Four things may live here and no more: which box this person is packing
+  // into, their name, the mute setting, and the session that gets them past
+  // the locked page. None of them is catalog data, and none is the password.
+  const allowed = /^(catalog\.session|app\.helper|app\.muted|sb-.*-auth-token)$/;
   assert.ok(
-    local.localStorage.every((k) => k === 'catalog.session' || k === 'app.muted'),
+    local.localStorage.every((k) => allowed.test(k)),
     `unexpected local storage: ${JSON.stringify(local.localStorage)}`,
   );
+  assert.ok(!local.stored.includes('Kettle'), 'no catalog contents on the device');
 
   // And the row really is on the server.
   assert.equal((await catalog.get('ZZ33'))?.name, 'Kettle');

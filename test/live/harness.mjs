@@ -4,6 +4,8 @@ import { mkdir, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
+import { RemoteCatalog } from '../../app/src/core/remote.js';
+import { CREW_EMAIL } from '../../config.js';
 
 const run = promisify(execFile);
 export const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -95,6 +97,23 @@ export function requireCrewPassword() {
   );
 }
 
+/**
+ * A signed-in catalog for the tests that drive the data layer straight from
+ * Node, with no browser in the way. Same account the app uses — there is only
+ * one — so these exercise the policies a helper actually runs under rather
+ * than a privileged back door.
+ */
+export async function openCatalog({ actor = 'test runner' } = {}) {
+  const catalog = RemoteCatalog.open();
+  const { error } = await catalog.raw.auth.signInWithPassword({
+    email: CREW_EMAIL,
+    password: requireCrewPassword(),
+  });
+  if (error) throw new Error(`crew sign-in failed: ${error.message}`);
+  catalog.actor = actor;
+  return catalog;
+}
+
 /** A page with the app booted, signed in, and a clean database. */
 export async function openApp(browser, { hash = '', signedIn = true } = {}) {
   const page = await browser.newPage();
@@ -120,6 +139,16 @@ export async function openApp(browser, { hash = '', signedIn = true } = {}) {
  * the gate suite has not already covered.
  */
 export async function signIn(page, { name = 'test runner' } = {}) {
+  // Boot is two async steps — `app.catalog` exists a beat before the session
+  // check resolves and something mounts. Asking for `.gate` in that gap finds
+  // nothing, skips the sign-in, and leaves every later query 401ing with no
+  // visible cause: the watermark comes back 0 and years of old events leak
+  // into assertions that filter on it.
+  await page.waitForFunction(
+    () => document.querySelector('.gate') || document.querySelector('#tabbar .tab'),
+    { timeout: 20_000 },
+  );
+
   const locked = await page.$('.gate');
   if (!locked) return;
 
