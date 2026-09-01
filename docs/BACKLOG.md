@@ -92,7 +92,7 @@ to offer a button.
 1. **The printed labels have never been scan-tested.** Four sheets are printed
    (`2222` … `22A5`). Stick five, scan them in the worst light you will actually
    work in. Modules are 0.551 mm against the 0.72 mm the brief assumed; if they
-   fail, the three fallbacks are in [BUILD.md](BUILD.md) under *QR size*.
+   fail, the three fallbacks are in [LABELS.md](LABELS.md) under *QR size*.
 2. **Camera + text problems** — item 6, still undescribed.
 3. **A photo can only be taken during enrolment**, on a screen you see once. Get
    a bad shot and there is no way back to it. Edit should take one.
