@@ -35,6 +35,8 @@ export class App {
   lastThing = null;
   targetName = null;
   cameraError = null;
+  /** The aiming box on screen, if the current view has one. */
+  scanRegion = null;
 
   #root;
   #banner;
@@ -50,6 +52,7 @@ export class App {
   #routeAgain = false;
   #saving = false;
   #targetCount = null;
+  #cameraWanted = false;
 
   constructor(root) {
     this.#root = root;
@@ -105,7 +108,10 @@ export class App {
       this.#liveTimer = setTimeout(() => this.#refreshLive(), 120);
     });
 
-    this.scanner = new CameraScanner(this.video, (text) => this.scan(text, { source: 'camera' }));
+    this.scanner = new CameraScanner(this.video, (text) => this.scan(text, { source: 'camera' }), {
+      region: () => this.scanRegion?.getBoundingClientRect() ?? null,
+    });
+    this.#followKeyboard();
     this.keyboard = new KeyboardScanner((text, meta) => this.scan(text, meta));
     this.keyboard.start();
 
@@ -113,8 +119,20 @@ export class App {
     // already makes a sound.
     document.addEventListener('pointerdown', () => warmUp(), { once: true });
     window.addEventListener('hashchange', () => this.#route());
+    /*
+     * Backgrounding the app releases the camera, which is right — but nothing
+     * ever brought it back. Lock the phone, read a message, return, and the
+     * viewfinder stayed black while scans quietly did nothing. It looks exactly
+     * like a label that will not read.
+     */
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.scanner.stop();
+      if (document.hidden) {
+        this.#cameraWanted = this.scanner.running && !this.scanner.paused;
+        this.scanner.stop();
+      } else if (this.#cameraWanted) {
+        this.#cameraWanted = false;
+        this.startCamera();
+      }
     });
 
     // Losing the network now stops the work, so it is watched rather than
@@ -565,17 +583,55 @@ export class App {
   }
 
   /**
+   * Make the app exactly as tall as the part of the screen you can see.
+   *
+   * iOS does not resize the page when the keyboard opens — it slides over the
+   * top of it. So a bottom tab bar sits underneath the keyboard, and the
+   * browser, trying to reveal the field being typed into, scrolls the whole
+   * document instead. That is the lurch: a viewfinder jumping half a screen
+   * because a text field took focus.
+   *
+   * `visualViewport` is the only thing that knows how much is actually
+   * visible. Give the shell that height and the layout does the reasonable
+   * thing on its own — the viewfinder shrinks, nothing scrolls, and the tab bar
+   * gets out of the way rather than hiding behind the keys.
+   */
+  #followKeyboard() {
+    const vv = globalThis.visualViewport;
+    if (!vv) return;
+
+    const apply = () => {
+      const root = document.documentElement;
+      // The measured height, not `100dvh` minus a guess. dvh does not change
+      // when an iOS keyboard opens, and how it resolves differs between
+      // browsers; visualViewport is simply what is visible.
+      root.style.setProperty('--app-height', `${Math.round(vv.height)}px`);
+      // A few pixels of difference is the toolbar collapsing on scroll, not a
+      // keyboard. Only a real one should move the furniture.
+      const hidden = window.innerHeight - vv.height;
+      root.classList.toggle('is-keyboard', hidden > 120);
+    };
+
+    vv.addEventListener('resize', apply);
+    vv.addEventListener('scroll', apply);
+    apply();
+  }
+
+  /**
    * Turn the camera off without leaving the screen. The enrol view calls this
    * the moment there is a photo: the stream and the decode loop were running
    * through the whole naming step, which is where a good part of the heat came
    * from.
    */
   stopCamera() {
-    this.scanner?.stop();
+    this.scanner?.pause();
   }
 
   async startCamera() {
-    if (this.scanner.running) return true;
+    if (this.scanner.running) {
+      this.scanner.resume();
+      return true;
+    }
     try {
       await this.scanner.start();
       this.cameraError = null;

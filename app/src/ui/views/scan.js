@@ -172,6 +172,9 @@ export function scanView(app) {
   );
 
   view.mounted = async () => {
+    // The decoder crops to this box, so it has to know where it ended up.
+    app.scanRegion = view.querySelector('.scan__reticle');
+
     const started = await app.startCamera();
     if (!started) {
       stage.replaceChildren(
@@ -196,7 +199,10 @@ export function scanView(app) {
 
   /** Somebody packed something — refresh the list in place, keep the camera. */
   view.live = load;
-  view.destroy = () => pool.release();
+  view.destroy = () => {
+    app.scanRegion = null;
+    pool.release();
+  };
   return view;
 }
 

@@ -49,7 +49,9 @@ export function enrollView(app, { id, packInto }) {
     onChange: async (e) => {
       const [file] = e.target.files;
       e.target.value = '';
-      if (file) await useImage(file);
+      if (!file) return;
+      name.focus();
+      await useImage(file);
     },
   });
   const pickButton = h('button.btn.enroll__pick.is-hidden',
@@ -64,9 +66,6 @@ export function enrollView(app, { id, packInto }) {
 
   const name = h('input.field__input', {
     type: 'text',
-    // Autofocused so the phone keyboard is already up and its mic key is one
-    // tap away — dictating "cast iron pan" is faster than typing it.
-    autofocus: true,
     autocomplete: 'off',
     enterkeyhint: 'done',
     placeholder: 'Name (optional)',
@@ -103,6 +102,11 @@ export function enrollView(app, { id, packInto }) {
   async function capture() {
     try {
       shutter.disabled = true;
+      // Focus inside the tap, before anything is awaited. iOS only raises the
+      // keyboard for a focus that happens within a user gesture, and by the
+      // time the photo has been downscaled the gesture has expired — which is
+      // why this used to open the keyboard on some taps and not others.
+      name.focus();
       const frame = await app.scanner.grabFrame();
       await useImage(frame);
       frame.close?.();
@@ -206,8 +210,16 @@ export function enrollView(app, { id, packInto }) {
     // an empty gap where the camera should be reads as "there is no photo here".
     stage.classList.add('is-hidden');
     pickButton.classList.add('is-hidden');
-    name.focus();
 
+    /*
+     * The name field is deliberately NOT focused here.
+     *
+     * It used to be, so the keyboard would already be up with its dictation key
+     * one tap away. In practice that meant landing on this screen with half of
+     * it covered by a keyboard while trying to aim a camera at an object — and
+     * then the keyboard closing again to take the shot. The focus now happens
+     * on the shutter tap, which is the moment it is actually wanted.
+     */
     const live = await app.startCamera();
     stageWaiting.classList.add('is-hidden');
     stage.classList.toggle('is-hidden', !live);

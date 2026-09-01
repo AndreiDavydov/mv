@@ -44,9 +44,19 @@ body {
   display: grid;
   grid-template-columns: 100%;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  height: 100dvh;
+  /* --app-height is what visualViewport says is actually visible, set in JS.
+     iOS slides the keyboard over the page rather than resizing it, and dvh does
+     not notice — so without this the tab bar hides behind the keys and the
+     browser scrolls the whole document to reveal the field being typed into.
+     100dvh is the value until the first measurement lands. */
+  height: var(--app-height, 100dvh);
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* With the keyboard up, the six tabs are unreachable anyway and the room they
+   take is room the field being typed into needs. */
+.is-keyboard #tabbar { display: none; }
+.is-keyboard #app { padding-bottom: 0; }
 
 #banner { grid-area: 1 / 1; }
 #view {
@@ -209,16 +219,36 @@ p { margin: 0 0 8px; }
 }
 .viewfinder { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
 
+/*
+ * This box is not decoration any more: the decoder crops the camera frame to
+ * it (plus a third for slack) before looking for a code, which is what makes a
+ * label readable at arm's length rather than at eight centimetres. Its size
+ * here is its size there.
+ */
 .scan__reticle {
   position: absolute;
   inset: 50% auto auto 50%;
-  width: min(62vw, 260px);
+  width: min(72vw, 300px);
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
-  border: 2px solid rgb(255 255 255 / 55%);
+  border: 2px solid rgb(255 255 255 / 30%);
   border-radius: 20px;
-  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 35%);
+  /* Everything outside the box is what the decoder throws away, so it is worth
+     making that obvious rather than hinting at it. */
+  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 55%);
 }
+/* Corner ticks read as "put it in here" far better than a plain square. */
+.scan__reticle::before,
+.scan__reticle::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 3px solid var(--accent);
+  border-radius: 20px;
+  pointer-events: none;
+}
+.scan__reticle::before { clip-path: polygon(0 0, 34% 0, 34% 8%, 8% 8%, 8% 34%, 0 34%); }
+.scan__reticle::after { clip-path: polygon(100% 100%, 66% 100%, 66% 92%, 92% 92%, 92% 66%, 100% 66%); }
 
 .scan__status {
   position: absolute;
@@ -238,10 +268,13 @@ p { margin: 0 0 8px; }
 .scan__manual .btn { flex: none; white-space: nowrap; }
 .scan__input {
   flex: 1;
+  /* Without this the field's own content width is its minimum, and on a 393 px
+     phone that pushed "Look up" off the right edge of the screen. */
+  min-width: 0;
   min-height: var(--tap);
   padding: 12px 14px;
-  font: 700 22px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.22em;
+  font: 700 20px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.18em;
   text-align: center;
   color: var(--ink);
   background: var(--surface);
@@ -530,9 +563,15 @@ p { margin: 0 0 8px; }
 
 /* ── tab bar ────────────────────────────────────────────────────────────── */
 
+/*
+ * Auto columns, not a fixed six. The bar has held five tabs since Undo moved
+ * off it, and the sixth column was still there — an empty sixth of the screen
+ * on the right, with every tab shifted left of centre.
+ */
 #tabbar {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   border-top: 1px solid var(--line);
   background: var(--surface);
 }

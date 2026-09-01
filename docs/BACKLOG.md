@@ -132,6 +132,43 @@ camera on the first tap with no stream to tear down when the screen changes
 underneath it. The upload writes a new file rather than overwriting, so the
 earlier photo is still in storage — only the row moves on.
 
+## ~~12. The screen fought the keyboard, and labels read badly at arm's length~~ — done
+
+Three things from a real iPhone, and they turned out to be unrelated.
+
+**The window lurching.** iOS does not resize the page when the keyboard opens —
+it slides over the top of it, and `dvh` never notices. So the tab bar sat behind
+the keys and the browser scrolled the whole document to reveal whatever field
+had focus. The shell is now exactly as tall as `visualViewport` says is visible,
+and the tab bar is hidden while the keyboard is up. On an iPhone 14 Pro that
+leaves 409 px, and the enrol screen fits in it: photo, name, toggle and both
+buttons, with nothing scrolled.
+
+The enrol screen also focused the name field on arrival, so you landed on it
+with half the screen under a keyboard while trying to aim a camera. The focus
+happens on the shutter tap now — and synchronously inside the tap, because iOS
+only raises the keyboard for a focus that happens within a gesture, which is why
+it used to work on some taps and not others.
+
+**Labels not reading.** The decoder shrank the *whole* sensor frame to 480 px
+and searched that. A 38 mm label at a comfortable distance came out around half
+a pixel per module — unreadable at any exposure, and no amount of holding still
+would have fixed it. It now crops to the reticle first (plus a third for slack)
+and spends those 480 pixels there: about 2.7× the module size at the same
+distance, and the aiming box finally means what it looks like it means. Capture
+is 1080p rather than 720p, and every fourth frame still looks at the whole
+picture so a label held off to one side is not ignored.
+
+The other half was simpler: backgrounding the app released the camera and
+nothing ever brought it back. Lock the phone, read a message, return — black
+viewfinder, scans quietly doing nothing, looking exactly like a label that will
+not read.
+
+**Two layout bugs found while looking.** The tab bar was a fixed six-column grid
+holding five tabs, so everything sat a sixth of the screen left of centre; and
+the manual-code field had no `min-width`, which pushed "Look up" off the right
+edge of a 393 px phone entirely.
+
 ---
 
 ## Still open
@@ -140,23 +177,22 @@ earlier photo is still in storage — only the row moves on.
    (`2222` … `22A5`). Stick five, scan them in the worst light you will actually
    work in. Modules are 0.551 mm against the 0.72 mm the brief assumed; if they
    fail, the three fallbacks are in [LABELS.md](LABELS.md) under *QR size*.
-2. **Camera + text problems** — item 6, still undescribed.
-3. **Unpacking at the far end** is only half-supported: **Empty** takes
+2. **Unpacking at the far end** is only half-supported: **Empty** takes
    everything out of a box, but there is no "tick items off as they come out".
-4. **Supabase free projects pause after about a week idle.** Over a multi-week
+3. **Supabase free projects pause after about a week idle.** Over a multi-week
    move this will happen: the app shows "No connection to the catalog" and it
    takes a click in the Supabase dashboard to wake. Not a bug, but it will look
    like one at the worst moment.
-5. **The catalog view fetches every row on each refresh.** Fine at 260 labels
+4. **The catalog view fetches every row on each refresh.** Fine at 260 labels
    (~100 kB); past a couple of thousand it wants pagination.
-6. **Photos are readable by URL without signing in.** The storage bucket answers
+5. **Photos are readable by URL without signing in.** The storage bucket answers
    without a token, which is what lets `<img src>` work without threading a
    signed URL through every view and refreshing it mid-session. What keeps them
    private is that the paths are unguessable and the only record of them is in
    the `things` row, which now needs a session to read. A leaked URL is still a
    leaked photo. The fix is `createSignedUrl` at render time; it touches five
    files and the backup exporter, and it was not worth it for a house move.
-7. **One shared password means no per-person revoke.** Losing a phone means
+6. **One shared password means no per-person revoke.** Losing a phone means
    changing the password for everybody. Individual accounts would fix it and
    would also make `events.actor` unforgeable, at the cost of an email round
    trip per helper — Supabase's built-in SMTP allows a few sends an hour on the
