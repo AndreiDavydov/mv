@@ -294,9 +294,21 @@ p { margin: 0 0 8px; }
 .shutter:disabled { opacity: 0.5; }
 
 .enroll__pick { margin: 12px var(--pad) 0; width: calc(100% - var(--pad) * 2); }
-.enroll__preview:not(.is-set) { display: none; }
-.enroll__preview { padding: 12px var(--pad) 0; }
 .enroll__form { display: flex; flex-direction: column; gap: 12px; padding: 12px var(--pad); }
+
+/* Photo beside the name, so both survive the keyboard coming up. */
+.enroll__named { display: flex; align-items: flex-start; gap: 12px; }
+.enroll__fields { flex: 1; min-width: 0; }
+.enroll__captured { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: none; }
+.enroll__shot {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 12px;
+  background: var(--surface-2);
+  display: block;
+}
+.enroll__retake { padding: 2px 6px; min-height: 0; font-size: 12px; }
 .enroll__actions { display: flex; gap: 10px; padding: 0 var(--pad) 16px; }
 
 /* ── thing ──────────────────────────────────────────────────────────────── */

@@ -2,3 +2,6 @@ node_modules/
 test/live/.media/
 proofs/screens/
 .DS_Store
+
+# scratch smoke scripts
+.*-smoke.mjs

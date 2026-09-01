@@ -85,6 +85,41 @@ policy and an insert policy and nothing else, so nobody holding the password can
 edit or delete what they did. That is Postgres refusing, not the app declining
 to offer a button.
 
+## ~~10. Packing was slow, and the phone got hot~~ — done
+
+Reported from an actual packing session: 4–5 seconds per item, and a phone warm
+enough to notice.
+
+**Heat.** The QR decoder ran on every animation frame — sixty full decodes a
+second, and on iOS each one is a canvas draw, a `getImageData` and a complete
+jsQR pass. Now ten a second, behind an animation frame so a backgrounded tab
+decodes not at all. The camera also stayed live through the whole naming step,
+pointed at an object that is not a label; it now switches off the moment there
+is a photo.
+
+**Speed.** Enrolling one item while packing cost about thirteen network round
+trips, one after another. It is three now, and the slowest of the old ones — the
+photo upload — happens while the name is being typed:
+
+| | before | after |
+|---|---|---|
+| photo + thumbnail upload | 2, serial, at Save | starts at the shutter, both at once |
+| create the thing | 1 insert + 1 event | unchanged |
+| put it in the box | read, read, update, event | none — the row is inserted already inside the box |
+| the box's name | re-read on every scan | held; re-read when the box changes |
+| the box's contents count | every row, before the banner drew | a count, after |
+| the pick-list | every row, before the viewfinder | every row, after |
+
+If the database refuses the parent, the item is still enrolled — loose, with a
+warning. Losing the thing because the box was wrong is the worse failure.
+
+**Layout.** The viewfinder stayed at full height after the shutter, so the name
+field and the buttons were pushed under the keyboard. The picture now sits
+beside the name field, and everything fits on one screen with the keyboard up.
+
+Also: a failed event-log write used to go only to the console. It is a hole in
+the one record that cannot be rebuilt later, so it says so on screen now.
+
 ---
 
 ## Still open
@@ -94,8 +129,9 @@ to offer a button.
    work in. Modules are 0.551 mm against the 0.72 mm the brief assumed; if they
    fail, the three fallbacks are in [LABELS.md](LABELS.md) under *QR size*.
 2. **Camera + text problems** — item 6, still undescribed.
-3. **A photo can only be taken during enrolment**, on a screen you see once. Get
-   a bad shot and there is no way back to it. Edit should take one.
+3. **A photo can only be taken during enrolment.** Retaking during enrolment now
+   works, but once the item is saved there is no way back to the camera. Edit
+   should take one.
 4. **Unpacking at the far end** is only half-supported: **Empty** takes
    everything out of a box, but there is no "tick items off as they come out".
 5. **Supabase free projects pause after about a week idle.** Over a multi-week

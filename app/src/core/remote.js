@@ -73,6 +73,14 @@ export class RemoteCatalog {
     return this.#actor;
   }
 
+  /**
+   * Called when a write half-succeeded — the row landed, something alongside it
+   * did not. Set by the app so it can say so; unset in tests and tools, where
+   * nothing is watching a screen.
+   * @type {((message: string) => void) | null}
+   */
+  onWarning = null;
+
   // ── liveness ─────────────────────────────────────────────────────────────
 
   /**
@@ -152,6 +160,16 @@ export class RemoteCatalog {
     return data.map(fromRow);
   }
 
+  /** How many things are in a container, without dragging the rows over. */
+  async childCount(id) {
+    const { count, error } = await this.#db
+      .from('things')
+      .select('id', { head: true, count: 'exact' })
+      .eq('parent_id', normalizeThingId(id));
+    if (error) throw wrap(error, 'could not count the contents');
+    return count ?? 0;
+  }
+
   async containers() {
     const { data, error } = await this.#db.from('things').select('*').eq('is_container', true);
     if (error) throw wrap(error, 'could not load containers');
@@ -194,22 +212,64 @@ export class RemoteCatalog {
 
   // ── writes ───────────────────────────────────────────────────────────────
 
-  async enroll(input) {
+  /**
+   * Create a thing.
+   *
+   * `packInto` is not a convenience wrapper around `packInto()` — it is the
+   * whole point of the option. Enrolling something while a box is open used to
+   * be an insert, an event, a read, another read, an update and another event:
+   * six round trips, one after another, on a phone in a stairwell. The row can
+   * simply be born inside the box, and both events go in one insert.
+   *
+   * If the database refuses the parent — the target stopped being an open
+   * container while somebody was typing a name — the thing is still enrolled,
+   * loose, and the caller is told. Losing the item because the box was wrong is
+   * the worse failure of the two.
+   *
+   * @returns {Promise<object & {packFailed?: string}>}
+   */
+  async enroll(input, { packInto = null } = {}) {
     const id = normalizeId(input.id);
     if (!isValidId(id)) throw new TypeError(`not an id: ${JSON.stringify(input.id)}`);
+    const target = packInto ? normalizeThingId(packInto) : null;
 
-    const row = toRow({ ...input, id });
-    const { data, error } = await this.#db.from('things').insert(row).select().single();
+    const attempt = async (parent) => {
+      const row = toRow({
+        ...input,
+        id,
+        parent_id: parent,
+        status: parent ? 'packed' : (input.status ?? 'unpacked'),
+      });
+      return this.#db.from('things').insert(row).select().single();
+    };
+
+    let { data, error } = await attempt(target);
+    let packFailed = null;
+    if (error && target && error.code !== '23505') {
+      packFailed = wrap(error, `could not put ${id} in ${target}`).message;
+      ({ data, error } = await attempt(null));
+    }
     if (error) {
       // 23505 is a unique violation: two people scanned the same fresh label.
       throw error.code === '23505' ? new Error(`${id} is already enrolled`) : wrap(error, 'could not enrol');
     }
 
     const thing = fromRow(data);
-    await this.#log([
+    const events = [
       { thing_id: id, type: 'enrolled', parent_id: thing.parent_id, payload: { group: this.#group(), before: null, after: summary(thing) } },
-    ]);
-    return thing;
+    ];
+    // A separate group, so one undo takes it out of the box and the next undo
+    // removes it — the same two steps as packing something already enrolled.
+    if (thing.parent_id) {
+      events.push({
+        thing_id: id,
+        type: 'packed',
+        parent_id: thing.parent_id,
+        payload: { group: this.#group(), before: { parent_id: null, status: 'unpacked' }, after: { parent_id: thing.parent_id, status: 'packed' } },
+      });
+    }
+    await this.#log(events);
+    return packFailed ? { ...thing, packFailed } : thing;
   }
 
   async update(id, patch, { type = 'moved' } = {}) {
@@ -221,12 +281,15 @@ export class RemoteCatalog {
     return this.update(id, { name }, { type: 'renamed' });
   }
 
-  async packInto(id, parentId) {
+  async packInto(id, parentId, { known = null } = {}) {
     const thingId = normalizeThingId(id);
     const target = normalizeThingId(parentId);
     if (thingId === target) throw new Error('a container cannot contain itself');
 
-    const thing = await this.get(thingId);
+    // `known` is the row the caller has just read or written. Packing something
+    // scanned off a shelf used to read it three times over: once to show it,
+    // once to check the rules, once inside the update.
+    const thing = known?.id === thingId ? known : await this.get(thingId);
     if (!thing) throw new Error(`${thingId} is not enrolled`);
     if (thing.parent_id === target && thing.status === 'packed') return thing;
 
@@ -239,7 +302,7 @@ export class RemoteCatalog {
       steps.push({ id: thingId, patch: { parent_id: null, status: 'unpacked' }, type: 'unpacked' });
     }
     steps.push({ id: thingId, patch: { parent_id: target, status: 'packed' }, type: 'packed' });
-    const results = await this.#applyGroup(steps);
+    const results = await this.#applyGroup(steps, { known: thing });
     return results.at(-1);
   }
 
@@ -431,14 +494,16 @@ export class RemoteCatalog {
     return this.#lastGroup;
   }
 
-  async #applyGroup(steps) {
+  async #applyGroup(steps, { known = null } = {}) {
     const group = this.#group();
     const out = [];
     const log = [];
+    let carried = known;
 
     for (const { id, patch, type } of steps) {
       const thingId = normalizeThingId(id);
-      const current = await this.get(thingId);
+      const current = carried?.id === thingId ? carried : await this.get(thingId);
+      carried = null; // only the first step can trust what the caller handed us
       if (!current) throw new Error(`${thingId} is not enrolled`);
 
       const { data, error } = await this.#db
@@ -468,8 +533,21 @@ export class RemoteCatalog {
     const stamped = rows.map((row) => ({ actor: this.#actor, ...row }));
     const { error } = await this.#db.from('events').insert(stamped);
     // The write already happened; a lost log line must not present as a failed
-    // action. It is worth knowing about, so it is not swallowed silently.
-    if (error) console.error('event log write failed', error);
+    // action. But it is not nothing either — it is a hole in the one record
+    // that cannot be reconstructed later — so it is said out loud rather than
+    // left in a console nobody is reading on a phone.
+    if (error) {
+      console.error('event log write failed', error);
+      this.#warn(`Saved, but the history entry did not record: ${error.message}`);
+    }
+  }
+
+  #warn(message) {
+    try {
+      this.onWarning?.(message);
+    } catch {
+      // A broken handler must not turn a warning into a failed action.
+    }
   }
 
   // ── photos ───────────────────────────────────────────────────────────────
@@ -491,19 +569,24 @@ export class RemoteCatalog {
   async uploadPhoto(id, { photo, thumb }) {
     const key = normalizeId(id);
     const stamp = token();
-    const urls = {};
-    for (const [field, blob, path] of [
+
+    // Both at once. They are independent files and the phone's uplink is the
+    // slow part of a save; sending them one after the other doubled the wait
+    // for no reason.
+    const uploads = [
       ['photo_url', photo, `${key}-${stamp}.jpg`],
       ['thumb_url', thumb, `${key}-${stamp}-thumb.jpg`],
-    ]) {
-      if (!blob) continue;
-      const { error } = await this.#db.storage
-        .from('photos')
-        .upload(path, blob, { contentType: 'image/jpeg' });
-      if (error) throw wrap(error, 'could not upload the photo');
-      urls[field] = this.#db.storage.from('photos').getPublicUrl(path).data.publicUrl;
-    }
-    return urls;
+    ]
+      .filter(([, blob]) => blob)
+      .map(async ([field, blob, path]) => {
+        const { error } = await this.#db.storage
+          .from('photos')
+          .upload(path, blob, { contentType: 'image/jpeg' });
+        if (error) throw wrap(error, 'could not upload the photo');
+        return [field, this.#db.storage.from('photos').getPublicUrl(path).data.publicUrl];
+      });
+
+    return Object.fromEntries(await Promise.all(uploads));
   }
 
   // ── session: deliberately NOT shared ─────────────────────────────────────

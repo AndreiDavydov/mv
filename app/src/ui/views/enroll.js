@@ -1,5 +1,5 @@
 import { h } from '../dom.js';
-import { kindChips, thumbnail } from '../components.js';
+import { kindChips } from '../components.js';
 import { derivePhotos, urlPool } from '../../platform/images.js';
 
 /**
@@ -26,7 +26,10 @@ export function enrollView(app, { id, packInto }) {
     onClick: () => capture(),
   });
 
-  const preview = h('div.enroll__preview');
+  const shot = h('img.enroll__shot', { alt: '' });
+  const retake = h('button.btn.btn--ghost.enroll__retake',
+    { type: 'button', onClick: () => reopenCamera() }, 'Retake');
+  const captured = h('div.enroll__captured.is-hidden', null, shot, retake);
 
   // An unlabelled circle over a video is not a photo button to anyone who has
   // not been told. Say what it does.
@@ -112,10 +115,41 @@ export function enrollView(app, { id, packInto }) {
 
   async function useImage(source) {
     Object.assign(draft, await derivePhotos(source));
+
+    /*
+     * The upload starts here rather than at Save.
+     *
+     * Naming a thing takes a few seconds of typing, and the photo is the one
+     * part of the save that moves real bytes over a phone's connection. Sending
+     * it while the keyboard is up costs nothing and takes the slowest step off
+     * the critical path entirely — by the time Save is pressed the URLs are
+     * usually already in hand.
+     */
+    draft.uploading = app.catalog
+      .uploadPhoto(id, { photo: draft.photo, thumb: draft.thumb })
+      .catch((error) => ({ error }));
+
     pool.release();
-    preview.replaceChildren(thumbnail(draft, pool, { size: 'lg' }));
-    preview.classList.add('is-set');
+    shot.src = pool.for(draft.thumb) ?? pool.for(draft.photo);
+    captured.classList.remove('is-hidden');
+
+    /*
+     * The camera goes off the moment there is a picture. It was running through
+     * the whole naming step — decoding QR frames at a thing that is not a label
+     * — which is heat, battery, and a viewfinder taking up the half of the
+     * screen the keyboard was about to want.
+     */
+    app.stopCamera();
+    stage.classList.add('is-hidden');
+    pickButton.classList.add('is-hidden');
     name.focus();
+  }
+
+  async function reopenCamera() {
+    captured.classList.add('is-hidden');
+    const live = await app.startCamera();
+    stage.classList.toggle('is-hidden', !live);
+    pickButton.classList.toggle('is-hidden', live);
   }
 
   async function save({ quick = false } = {}) {
@@ -128,6 +162,7 @@ export function enrollView(app, { id, packInto }) {
           name: quick ? null : name.value,
           photo: draft.photo,
           thumb: draft.thumb,
+          uploading: draft.uploading,
           is_container: quick ? false : draft.is_container,
           container_kind: draft.container_kind,
         },
@@ -151,9 +186,11 @@ export function enrollView(app, { id, packInto }) {
     stageWaiting,
     pickButton,
     filePicker,
-    preview,
     h('div.enroll__form', null,
-      h('div.field', null, name),
+      // The picture and the name sit side by side once there is a picture, so
+      // that both are on screen with the keyboard up. A full-width viewfinder
+      // above a full-width field is two things and room for one.
+      h('div.enroll__named', null, captured, h('div.field.enroll__fields', null, name)),
       containerToggle,
       kindRow,
     ),

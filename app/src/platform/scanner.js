@@ -10,6 +10,20 @@ import { jsQR } from '../../../vendor/jsqr.js';
 
 const SAMPLE_EDGE = 480; // downscale before software decoding — full frames are wasteful
 
+/**
+ * Milliseconds between decode attempts.
+ *
+ * This used to decode on every animation frame, which is sixty full decodes a
+ * second — and on iOS, where there is no BarcodeDetector, each one is a canvas
+ * draw, a getImageData and a complete jsQR scan. The phone got hot enough to
+ * notice within a few minutes of packing, and the battery went with it.
+ *
+ * Ten a second is far more than enough: a hand bringing a phone to a label
+ * takes a few hundred milliseconds to settle, so nothing is caught later than
+ * it would have been, and the CPU spends nine tenths of its time idle.
+ */
+const DECODE_INTERVAL_MS = 100;
+
 export async function detectorKind() {
   if (!globalThis.BarcodeDetector) return 'jsqr';
   try {
@@ -27,6 +41,7 @@ export class CameraScanner {
   #detector = null;
   #canvas = null;
   #raf = null;
+  #timer = null;
   #running = false;
   #kind = 'jsqr';
 
@@ -77,7 +92,9 @@ export class CameraScanner {
   stop() {
     this.#running = false;
     if (this.#raf) cancelAnimationFrame(this.#raf);
+    if (this.#timer) clearTimeout(this.#timer);
     this.#raf = null;
+    this.#timer = null;
     for (const track of this.#stream?.getTracks() ?? []) track.stop();
     this.#stream = null;
     this.#video.srcObject = null;
@@ -91,7 +108,26 @@ export class CameraScanner {
     } catch {
       // A dropped frame is not an error worth surfacing; keep decoding.
     }
-    if (this.#running) this.#raf = requestAnimationFrame(() => this.#tick());
+    this.#schedule();
+  }
+
+  /**
+   * Wait out the interval, then wait for a frame.
+   *
+   * The timeout is the throttle; the animation frame after it is what stops a
+   * backgrounded tab from decoding at all — rAF does not fire when the page is
+   * hidden, and a phone in a pocket has no business running jsQR.
+   */
+  #schedule() {
+    if (!this.#running) return;
+    this.#timer = setTimeout(() => {
+      this.#timer = null;
+      if (!this.#running) return;
+      this.#raf = requestAnimationFrame(() => {
+        this.#raf = null;
+        this.#tick();
+      });
+    }, DECODE_INTERVAL_MS);
   }
 
   async #readFrame() {

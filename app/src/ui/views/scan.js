@@ -183,7 +183,15 @@ export function scanView(app) {
       );
       manual.focus();
     }
-    await load();
+
+    /*
+     * Not awaited. The pick-list is every row in the catalog, and this view is
+     * remounted after every single save — so the list was being refetched
+     * between one item and the next, with the viewfinder waiting behind it.
+     * The camera is what this screen is for; the list can arrive when it
+     * arrives.
+     */
+    load();
   };
 
   /** Somebody packed something — refresh the list in place, keep the camera. */

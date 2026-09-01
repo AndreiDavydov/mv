@@ -48,6 +48,7 @@ export class App {
   #mountToken = 0;
   #routeAgain = false;
   #saving = false;
+  #targetCount = null;
 
   constructor(root) {
     this.#root = root;
@@ -91,6 +92,7 @@ export class App {
   async #start(helper) {
     this.helper = helper;
     this.catalog.actor = helper;
+    this.catalog.onWarning = (message) => this.toast(message, 'warn', 6000);
     this.session = await this.catalog.session();
     setMuted(localStorage.getItem('app.muted') === 'true');
 
@@ -257,21 +259,31 @@ export class App {
   async #completeEnroll({ id, packInto, quick, fields }) {
     // The photo goes to shared storage first: the row carries URLs, so every
     // other screen can show the picture without asking the device that took it.
-    const { photo, thumb, ...rest } = fields;
+    const { photo, thumb, uploading, ...rest } = fields;
     await this.attempt(async () => {
       // A photo that will not upload must not cost the item. What somebody
       // typed is the valuable part; the picture is a bonus, and losing the
       // whole enrolment over storage being misconfigured is the worse failure.
+      //
+      // `uploading` is the upload the enrol screen started the moment the
+      // shutter was tapped. By the time anyone has finished typing a name it
+      // has usually already landed, so this await costs nothing.
       let urls = {};
-      if (photo || thumb) {
+      if (uploading) {
+        const result = await uploading;
+        if (result?.error) this.toast(`Saved without the photo: ${result.error.message}`, 'warn', 5000);
+        else urls = result;
+      } else if (photo || thumb) {
         try {
           urls = await this.catalog.uploadPhoto(id, { photo, thumb });
         } catch (error) {
           this.toast(`Saved without the photo: ${error.message}`, 'warn', 5000);
         }
       }
-      await this.catalog.enroll({ id, ...rest, ...urls });
-      if (packInto) await this.catalog.packInto(id, packInto);
+
+      // One insert, born inside the box, with both events in one write.
+      const thing = await this.catalog.enroll({ id, ...rest, ...urls }, { packInto });
+      if (thing.packFailed) this.toast(`Saved, but not packed: ${thing.packFailed}`, 'warn', 5000);
     }, { failure: `${id} was NOT saved` });
 
     this.#pendingEnroll = null;
@@ -525,6 +537,16 @@ export class App {
     await view.mounted?.();
   }
 
+  /**
+   * Turn the camera off without leaving the screen. The enrol view calls this
+   * the moment there is a photo: the stream and the decode loop were running
+   * through the whole naming step, which is where a good part of the heat came
+   * from.
+   */
+  stopCamera() {
+    this.scanner?.stop();
+  }
+
   async startCamera() {
     if (this.scanner.running) return true;
     try {
@@ -543,10 +565,18 @@ export class App {
   // ── chrome ───────────────────────────────────────────────────────────────
 
   async #setSession(session) {
+    const previousTarget = this.session?.target_id ?? null;
     this.session = await this.catalog.setSession(session);
-    this.targetName = this.session.target_id
-      ? displayName(await this.catalog.get(this.session.target_id))
-      : null;
+
+    // The box being packed does not rename itself between two scans, and this
+    // ran on every one of them — a network round trip to re-read a string the
+    // app was already holding.
+    if (this.session.target_id !== previousTarget || this.targetName === null) {
+      this.#targetCount = null;
+      this.targetName = this.session.target_id
+        ? displayName(await this.catalog.get(this.session.target_id))
+        : null;
+    }
     await this.#refreshChrome();
   }
 
@@ -557,14 +587,25 @@ export class App {
       if (!this.targetName) {
         this.targetName = displayName(await this.catalog.get(this.session.target_id));
       }
-      const contents = await this.catalog.childrenOf(this.session.target_id);
+
+      // The count is not worth waiting for. It used to pull every row in the
+      // box, on every scan, before the banner could be drawn — so the slowest
+      // thing on the screen was the least important number on it. The banner
+      // goes up now and the tally catches up when it arrives.
+      const tally = h('small', null,
+        this.#targetCount === null ? '…' : plural(this.#targetCount, 'item'));
+      this.catalog.childCount(this.session.target_id).then((n) => {
+        this.#targetCount = n;
+        tally.textContent = plural(n, 'item');
+      }).catch(() => {});
+
       banners.push(
         h('div.banner.banner--packing', null,
           h('button.banner__main', { type: 'button', onClick: () => this.open(this.session.target_id) },
             h('span.banner__icon', null, '📦'),
             h('span.banner__text', null,
               h('b', null, `Packing into ${this.targetName}`),
-              h('small', null, plural(contents.length, 'item')),
+              tally,
             ),
           ),
           h('button.btn.btn--ghost', { type: 'button', onClick: () => this.stopPacking() }, 'Done'),
