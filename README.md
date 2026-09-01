@@ -47,7 +47,7 @@ worse than being told to move two metres.
 | Catalog | empty — the test rows were cleared before the first real print |
 | Labels printed | 4 sheets, 260 labels, `2222` … `22A5` |
 | Next free code | `22A6` |
-| Tests | 129 unit (~0.2 s) · 67 live (~2 min) |
+| Tests | 129 unit (~0.2 s) · 68 live (~2 min) |
 
 **The one thing never tested:** whether the printed labels actually scan off
 paper. Stick five and try them in the worst light you will really work in.

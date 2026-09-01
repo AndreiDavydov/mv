@@ -6,6 +6,7 @@ import { currentHelper, signOut } from '../core/auth.js';
 import { cueFor, decideScan, finishEnroll, isRepeatScan, startPacking, stopPacking } from '../core/machine.js';
 import { CameraScanner, KeyboardScanner } from '../platform/scanner.js';
 import { play, setMuted, warmUp } from '../platform/feedback.js';
+import { derivePhotos } from '../platform/images.js';
 import { h, plural } from './dom.js';
 import { askSheet, displayName } from './components.js';
 import { actionsFor } from '../core/capabilities.js';
@@ -381,6 +382,32 @@ export class App {
     if (!result) return;
     this.toast(`${result.freed} is free — scan it onto the new thing`, 'good', 6000);
     return this.go('#/scan');
+  }
+
+  /**
+   * Put a photo on something already in the catalog.
+   *
+   * The picture used to be available only during enrolment, on a screen you see
+   * once — miss the shot and the thing stayed blank for good. The upload writes
+   * a new file rather than replacing the old one, so an earlier photo is still
+   * in storage; only the row moves on.
+   */
+  async attachPhoto(id, source) {
+    this.toast('Saving the photo…', 'muted');
+    let derived;
+    try {
+      derived = await derivePhotos(source);
+    } catch (error) {
+      return this.toast(`Could not read that image: ${error.message}`, 'bad');
+    }
+
+    await this.attempt(async () => {
+      const urls = await this.catalog.uploadPhoto(id, derived);
+      await this.catalog.update(id, urls);
+    }, { failure: 'The photo was NOT saved' });
+
+    this.toast('Photo saved', 'good');
+    return this.open(id, { replace: true });
   }
 
   async saveEdit(id, patch) {

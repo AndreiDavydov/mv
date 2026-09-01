@@ -24,7 +24,7 @@ Live: **https://andreidavydov.github.io/mv/app/**
 | script | what it does |
 |---|---|
 | `npm test` | unit tests — pure rules, no browser, no network (129, ~0.2 s) |
-| `npm run test:live` | everything needing the database, browsers included (67, ~2 min). Needs `CREW_PASSWORD` in the environment |
+| `npm run test:live` | everything needing the database, browsers included (68, ~2 min). Needs `CREW_PASSWORD` in the environment |
 | `npm run test:all` | both |
 | `npm run serve [port]` | static dev server; `localhost` is a secure context, so `getUserMedia` behaves as it does on Pages |
 | `npm run vendor` | bundle `qrcode`, `jsqr`, `fflate`, `supabase-js` into `/vendor` |
@@ -121,7 +121,7 @@ Two of them are worth knowing about:
   `migration-005-auth.sql` ever names `anon` again. `schema.sql` is documented as
   safe to re-run, so a stray anon policy in it would silently reopen the catalog.
 
-**`npm run test:live` — 67 tests against the real Supabase project, ~2 min.**
+**`npm run test:live` — 68 tests against the real Supabase project, ~2 min.**
 Browsers driven by puppeteer against installed Chrome. Needs `CREW_PASSWORD`.
 
 The catalog is shared and live, so these can never wipe it: each file owns a

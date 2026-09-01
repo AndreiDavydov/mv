@@ -120,6 +120,18 @@ beside the name field, and everything fits on one screen with the keyboard up.
 Also: a failed event-log write used to go only to the console. It is a hole in
 the one record that cannot be rebuilt later, so it says so on screen now.
 
+## ~~11. No way to photograph something already in the catalog~~ — done
+
+The camera existed only on the enrol screen, which you see once — miss the shot
+and the thing stayed blank for good. **Add photo** is on the thing itself now,
+and the picture is tappable for the same thing.
+
+It uses the OS camera rather than the in-app viewfinder: this is the handful of
+shots that got missed, not a loop worth optimising, and `capture` opens the
+camera on the first tap with no stream to tear down when the screen changes
+underneath it. The upload writes a new file rather than overwriting, so the
+earlier photo is still in storage — only the row moves on.
+
 ---
 
 ## Still open
@@ -129,25 +141,22 @@ the one record that cannot be rebuilt later, so it says so on screen now.
    work in. Modules are 0.551 mm against the 0.72 mm the brief assumed; if they
    fail, the three fallbacks are in [LABELS.md](LABELS.md) under *QR size*.
 2. **Camera + text problems** — item 6, still undescribed.
-3. **A photo can only be taken during enrolment.** Retaking during enrolment now
-   works, but once the item is saved there is no way back to the camera. Edit
-   should take one.
-4. **Unpacking at the far end** is only half-supported: **Empty** takes
+3. **Unpacking at the far end** is only half-supported: **Empty** takes
    everything out of a box, but there is no "tick items off as they come out".
-5. **Supabase free projects pause after about a week idle.** Over a multi-week
+4. **Supabase free projects pause after about a week idle.** Over a multi-week
    move this will happen: the app shows "No connection to the catalog" and it
    takes a click in the Supabase dashboard to wake. Not a bug, but it will look
    like one at the worst moment.
-6. **The catalog view fetches every row on each refresh.** Fine at 260 labels
+5. **The catalog view fetches every row on each refresh.** Fine at 260 labels
    (~100 kB); past a couple of thousand it wants pagination.
-7. **Photos are readable by URL without signing in.** The storage bucket answers
+6. **Photos are readable by URL without signing in.** The storage bucket answers
    without a token, which is what lets `<img src>` work without threading a
    signed URL through every view and refreshing it mid-session. What keeps them
    private is that the paths are unguessable and the only record of them is in
    the `things` row, which now needs a session to read. A leaked URL is still a
    leaked photo. The fix is `createSignedUrl` at render time; it touches five
    files and the backup exporter, and it was not worth it for a house move.
-8. **One shared password means no per-person revoke.** Losing a phone means
+7. **One shared password means no per-person revoke.** Losing a phone means
    changing the password for everybody. Individual accounts would fix it and
    would also make `events.actor` unforgeable, at the cost of an email round
    trip per helper — Supabase's built-in SMTP allows a few sends an hour on the

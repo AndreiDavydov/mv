@@ -207,3 +207,38 @@ test('losing the network fails loudly instead of pretending to save', async () =
     await page.evaluate(() => globalThis.app.checkConnection());
   }
 });
+
+test('a photo can be added to something already in the catalog', async () => {
+  // The gap this closes: the camera used to exist only on the enrol screen,
+  // which you see once. Miss the shot and the thing stayed blank for good.
+  await enrol(`${P}9`, 'Forgot the photo');
+  await page.goto(`${BASE}/app/#${P}9`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.view--thing');
+
+  const label = await page.$eval('.thing__actions', (el) =>
+    [...el.querySelectorAll('button')].map((b) => b.textContent).find((t) => /photo/i.test(t)));
+  assert.equal(label, 'Add photo', 'the button should offer to add, not replace');
+
+  await page.evaluate(async (id) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 240;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#7a4b2a';
+    ctx.fillRect(0, 0, 320, 240);
+    const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg'));
+    await globalThis.app.attachPhoto(id, blob);
+  }, `${P}9`);
+
+  await page.waitForFunction((id) => globalThis.app.catalog.get(id).then((t) => Boolean(t.photo)), {}, `${P}9`);
+  const [row] = (await reserved(page, P)).filter((t) => t.id === `${P}9`);
+  assert.ok(row.has_photo, 'the row should carry a photo url');
+
+  // A photo lands in the log like any other change, with a name on it.
+  assert.ok((await historyOf(page, `${P}9`)).includes('moved'));
+
+  await page.waitForSelector('.view--thing');
+  const after = await page.$eval('.thing__actions', (el) =>
+    [...el.querySelectorAll('button')].map((b) => b.textContent).find((t) => /photo/i.test(t)));
+  assert.equal(after, 'Replace photo');
+});

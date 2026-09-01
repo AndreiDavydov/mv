@@ -30,11 +30,41 @@ export function thingView(app, { thing, contents, trail }) {
       ? h('button.btn.btn--big', { type: 'button', class: kind, onClick }, label)
       : null;
 
+  /*
+   * The OS camera rather than the in-app viewfinder.
+   *
+   * A photo taken here is the one that got missed during enrolment — a handful
+   * over a whole move, not a loop worth optimising — and `capture` opens the
+   * camera on the first tap with no permission dance and no stream to tear
+   * down when the screen changes underneath it.
+   */
+  const camera = h('input', {
+    type: 'file',
+    accept: 'image/*',
+    capture: 'environment',
+    style: { display: 'none' },
+    onChange: (e) => {
+      const [file] = e.target.files;
+      e.target.value = '';
+      // attempt() has already said so on screen; nothing to add here.
+      if (file) app.attachPhoto(thing.id, file).catch(() => {});
+    },
+  });
+
+  const hero = thumbnail(thing, pool, { size: 'xl' });
+  if (can.photograph) {
+    // The picture is the obvious thing to tap when you want a different one.
+    hero.classList.add('thumb--tappable');
+    hero.title = thing.photo ? 'Replace the photo' : 'Add a photo';
+    hero.addEventListener('click', () => camera.click());
+  }
+
   const view = h(
     'section.view.view--thing',
     null,
+    camera,
     h('div.thing__hero', null,
-      thumbnail(thing, pool, { size: 'xl' }),
+      hero,
       h('div.thing__headline', null,
         h('h1.thing__name', null, displayName(thing)),
         h('div.thing__meta', null,
@@ -66,6 +96,7 @@ export function thingView(app, { thing, contents, trail }) {
       button(can.unpack, 'Take out', () => app.unpack(thing.id)),
       button(can.empty, `Empty${contents.length ? ` (${contents.length})` : ''}`, () => empty()),
       button(can.pack, 'Put in a box…', () => putInABox(), null, { whenNoBoxOpen: true }),
+      button(can.photograph, thing.photo ? 'Replace photo' : 'Add photo', () => camera.click()),
       button(can.edit, 'Edit', () => edit()),
       button(can.printManifest, 'Print manifest', () => app.go(`#/manifest/${thing.id}`)),
       button(can.restore, 'Restore', () => app.restore(thing.id)),
